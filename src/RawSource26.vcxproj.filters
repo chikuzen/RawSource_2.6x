@@ -28,6 +28,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="rawsource26.htm" />
+    <None Include="rawsource26.html" />
   </ItemGroup>
 </Project>

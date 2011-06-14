@@ -68,7 +68,14 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
         }
     }
 
-/*    const pix_fmt pixelformats[] = {
+    typedef struct {
+        char *fmt_name;
+        int avs_pix_type;
+        int order[4];
+        int cnt;
+    } pix_fmt;
+
+    pix_fmt pixelformats[] = {
         {"BGR",   VideoInfo::CS_BGR24, {0, 1, 2, 9}, 3},
         {"BGR24", VideoInfo::CS_BGR24, {0, 1, 2, 9}, 3},
         {"RGB",   VideoInfo::CS_BGR24, {2, 1, 0, 9}, 3},
@@ -96,147 +103,20 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
         {"NV12",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 2},
         {"NV21",  VideoInfo::CS_YV12,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 2},
         {"Y8",    VideoInfo::CS_Y8,    {PLANAR_Y, 0,        0,        0}, 1},
-        {"GRAY",  VideoInfo::CS_Y8,    {PLANAR_Y, 0,        0,        0}, 1}
+        {"GRAY",  VideoInfo::CS_Y8,    {PLANAR_Y, 0,        0,        0}, 1},
+        {NULL}
     };
-    for (int i = 0; i < sizeof(pixelformats) / sizeof(pix_fmt); i++) {
-        if(!stricmp(pix_type, pixelformats[i])) {
-*/
-    if (!stricmp(pix_type, "RGBA") || !stricmp(pix_type, "RGB32")) {
-        vi.pixel_type = VideoInfo::CS_BGR32;
-        mapping[0] = 2;
-        mapping[1] = 1;
-        mapping[2] = 0;
-        mapping[3] = 3;
-        mapcnt = 4;
-    } else if (!stricmp(pix_type, "BGRA") || !stricmp(pix_type, "BGR32")) {
-        vi.pixel_type = VideoInfo::CS_BGR32;
-        mapping[0] = 0;
-        mapping[1] = 1;
-        mapping[2] = 2;
-        mapping[3] = 3;
-        mapcnt = 4;
-    } else if (!stricmp(pix_type,"ARGB")) {
-        vi.pixel_type = VideoInfo::CS_BGR32;
-        mapping[0] = 3;
-        mapping[1] = 2;
-        mapping[2] = 1;
-        mapping[3] = 0;
-        mapcnt = 4;
-    } else if (!stricmp(pix_type, "ABGR")) {
-        vi.pixel_type = VideoInfo::CS_BGR32;
-        mapping[0] = 1;
-        mapping[1] = 2;
-        mapping[2] = 3;
-        mapping[3] = 0;
-        mapcnt = 4;
-    } else if (!stricmp(pix_type, "RGB")) {
-        vi.pixel_type = VideoInfo::CS_BGR24;
-        mapping[0] = 2;
-        mapping[1] = 1;
-        mapping[2] = 0;
-        mapcnt = 3;
-    } else if (!stricmp(pix_type, "BGR")) {
-        vi.pixel_type = VideoInfo::CS_BGR24;
-        mapping[0] = 0;
-        mapping[1] = 1;
-        mapping[2] = 2;
-        mapcnt = 3;
-    } else if (!stricmp(pix_type, "YUYV") || !stricmp(pix_type, "YUY2")) {
-        vi.pixel_type = VideoInfo::CS_YUY2;
-        mapping[0] = 0;
-        mapping[1] = 1;
-        mapcnt = 2;
-    } else if (!stricmp(pix_type, "UYVY")) {
-        vi.pixel_type = VideoInfo::CS_YUY2;
-        mapping[0] = 1;
-        mapping[1] = 0;
-        mapcnt = 2;
-    } else if (!stricmp(pix_type, "YVYU")) {
-        vi.pixel_type = VideoInfo::CS_YUY2;
-        mapping[0] = 0;
-        mapping[1] = 3;
-        mapping[2] = 2;
-        mapping[3] = 1;
-        mapcnt = 4;
-    } else if (!stricmp(pix_type, "VYUY")) {
-        vi.pixel_type = VideoInfo::CS_YUY2;
-        mapping[0] = 1;
-        mapping[1] = 2;
-        mapping[2] = 3;
-        mapping[3] = 0;
-        mapcnt = 4;
-    } else if (!stricmp(pix_type, "YV24")) {
-        vi.pixel_type = VideoInfo::CS_YV24;
-        mapping[0] = PLANAR_Y;
-        mapping[1] = PLANAR_V;
-        mapping[2] = PLANAR_U;
-        mapcnt = 3;
-    } else if (!stricmp(pix_type, "I444")) {
-        vi.pixel_type = VideoInfo::CS_YV24;
-        mapping[0] = PLANAR_Y;
-        mapping[1] = PLANAR_U;
-        mapping[2] = PLANAR_V;
-        mapcnt = 3;
-    } else if (!stricmp(pix_type, "I444")) {
-        vi.pixel_type = VideoInfo::CS_YV24;
-        mapping[0] = PLANAR_Y;
-        mapping[1] = PLANAR_U;
-        mapping[2] = PLANAR_V;
-        mapcnt = 3;
-    } else if (!stricmp(pix_type, "YV16")) {
-        vi.pixel_type = VideoInfo::CS_YV16;
-        mapping[0] = PLANAR_Y;
-        mapping[1] = PLANAR_V;
-        mapping[2] = PLANAR_U;
-        mapcnt = 3;
-    } else if (!stricmp(pix_type, "I422")) {
-        vi.pixel_type = VideoInfo::CS_YV16;
-        mapping[0] = PLANAR_Y;
-        mapping[1] = PLANAR_U;
-        mapping[2] = PLANAR_V;
-        mapcnt = 3;
-    } else if (!stricmp(pix_type, "YV411") || !stricmp(pix_type, "Y41B")) {
-        vi.pixel_type = VideoInfo::CS_YV411;
-        mapping[0] = PLANAR_Y;
-        mapping[1] = PLANAR_V;
-        mapping[2] = PLANAR_U;
-        mapcnt = 3;
-    } else if (!stricmp(pix_type, "I411")) {
-        vi.pixel_type = VideoInfo::CS_YV411;
-        mapping[0] = PLANAR_Y;
-        mapping[1] = PLANAR_U;
-        mapping[2] = PLANAR_V;
-        mapcnt = 3;
-    } else if (!stricmp(pix_type, "I420") ||
-               !stricmp(pix_type, "IYUV")) {
-        vi.pixel_type = VideoInfo::CS_I420;
-        mapping[0] = PLANAR_Y;
-        mapping[1] = PLANAR_U;
-        mapping[2] = PLANAR_V;
-        mapcnt = 3;
-    } else if (!stricmp(pix_type, "YV12")) {
-        vi.pixel_type = VideoInfo::CS_YV12;
-        mapping[0] = PLANAR_Y;
-        mapping[1] = PLANAR_V;
-        mapping[2] = PLANAR_U;
-        mapcnt = 3;
-    } else if (!stricmp(pix_type, "Y8") || !stricmp(pix_type, "GRAY")) {
-            vi.pixel_type = VideoInfo::CS_Y8;
-            mapping[0] = PLANAR_Y;
-            mapcnt = 1;
-    } else if (!stricmp(pix_type, "NV12")) {
-        vi.pixel_type = VideoInfo::CS_I420;
-        mapping[0] = PLANAR_Y;
-        mapping[1] = PLANAR_U;
-        mapping[2] = PLANAR_V;
-        mapcnt = 2;
-    } else if (!stricmp(pix_type, "NV21")) {
-        vi.pixel_type = VideoInfo::CS_YV12;
-        mapping[0] = PLANAR_Y;
-        mapping[1] = PLANAR_V;
-        mapping[2] = PLANAR_U;
-        mapcnt = 2;
-    } else
+    vi.pixel_type = VideoInfo::CS_UNKNOWN;
+    int i = 0;
+    while (pixelformats[i].fmt_name) {
+        if(!stricmp(pix_type, pixelformats[i].fmt_name)) {
+            vi.pixel_type = pixelformats[i].avs_pix_type;
+            memcpy(mapping, pixelformats[i].order, sizeof(pixelformats[i].order));
+            mapcnt = pixelformats[i].cnt;
+        }
+        i++;
+    }
+    if (vi.pixel_type == VideoInfo::CS_UNKNOWN)
         env->ThrowError("Invalid pixel type. Supported: RGB, RGBA, BGR, BGRA, ARGB,"
                         " ABGR, YUY2, YUYV, UYVY, YVYU, VYUY, YV16, I422, YV411,"
                         " I411, YV12, I420, IYUV, NV12, NV21, Y8, GRAY");
@@ -388,6 +268,7 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, IScriptEnvironment* env)
     unsigned char *pdst;
     int samples_per_line;
     int number_of_lines;
+    int pitch;
     int i, j, k;
 
     if (show && !level) {
@@ -415,14 +296,17 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, IScriptEnvironment* env)
         samples_per_line = dst->GetRowSize(PLANAR_Y);
         number_of_lines = dst->GetHeight(PLANAR_Y);
         pdst = dst->GetWritePtr(PLANAR_Y);
+        pitch = dst->GetPitch(PLANAR_Y);
         for (i = 0; i < number_of_lines; i++) {
             memset(rawbuf, 0, vi.width);
             ret = _read(h_rawfile, rawbuf, samples_per_line);
             memcpy(pdst, rawbuf, samples_per_line);
-            pdst += dst->GetPitch(PLANAR_Y);
+            pdst += pitch;
         }
         number_of_lines >>= 1;
         pdst = dst->GetWritePtr(mapping[1]);
+        pitch = dst->GetPitch(mapping[1]);
+        int pitch2 = dst->GetPitch(mapping[2]);
         unsigned char *pdst2 = dst->GetWritePtr(mapping[2]);
         for (i = 0; i < number_of_lines; i++) {
             memset(rawbuf, 0, vi.width);
@@ -431,35 +315,38 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, IScriptEnvironment* env)
                 pdst[j]  = rawbuf[j << 1];
                 pdst2[j] = rawbuf[(j << 1) + 1];
             }
-            pdst  += dst->GetPitch(mapping[1]);
-            pdst2 += dst->GetPitch(mapping[2]);
+            pdst  += pitch;
+            pdst2 += pitch2;
         }
     } else if (vi.IsPlanar()) {
         for (i = 0; i < mapcnt; i++) {
             samples_per_line = dst->GetRowSize(mapping[i]);
             number_of_lines = dst->GetHeight(mapping[i]);
             pdst = dst->GetWritePtr(mapping[i]);
+            pitch = dst->GetPitch(mapping[i]);
             for (j = 0; j < number_of_lines; j++) {
                 memset(rawbuf, 0, vi.width);
                 ret = _read(h_rawfile, rawbuf, samples_per_line);
                 memcpy (pdst, rawbuf, samples_per_line);
-                pdst += dst->GetPitch(mapping[i]);
+                pdst += pitch;
             }
         }
     } else if (!strnicmp(pix_type, "BGR", 3) || !strnicmp(pix_type, "YUY", 3)) {
         samples_per_line = dst->GetRowSize();
         number_of_lines = dst->GetHeight();
         pdst = dst->GetWritePtr();
+        pitch = dst->GetPitch();
         for (i = 0; i < number_of_lines; i++) {
             memset(rawbuf, 0, samples_per_line);
             ret = _read(h_rawfile, rawbuf, samples_per_line);
             memcpy(pdst, rawbuf, samples_per_line);
-            pdst += dst->GetPitch();
+            pdst += pitch;
         }
     } else {
         samples_per_line = dst->GetRowSize();
         number_of_lines = dst->GetHeight();
         pdst = dst->GetWritePtr();
+        pitch = dst->GetPitch();
         for (i = 0; i < number_of_lines; i++) {
             memset(rawbuf, 0, samples_per_line);
             ret = _read(h_rawfile, rawbuf, samples_per_line);
@@ -468,7 +355,7 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, IScriptEnvironment* env)
                     pdst[j * mapcnt + k] = rawbuf[j * mapcnt + mapping[k]];
                 }
             }
-            pdst += dst->GetPitch();
+            pdst += pitch;
         }
     }
     return dst;

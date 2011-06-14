@@ -64,6 +64,9 @@
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <WholeProgramOptimization>true</WholeProgramOptimization>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <FloatingPointExceptions>false</FloatingPointExceptions>
     </ClCompile>
     <Link>
       <TargetMachine>MachineX86</TargetMachine>
@@ -82,7 +85,7 @@
     <ClInclude Include="rawsource26.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="rawsource26.htm">
+    <None Include="rawsource26.html">
       <DeploymentContent>true</DeploymentContent>
     </None>
   </ItemGroup>

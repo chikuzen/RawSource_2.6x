@@ -35,13 +35,7 @@ class RawSource: public IClip {
     bool show;
     unsigned char *rawbuf;
 
-/*    typedef struct {
-        const char *fmt_name;
-        const int avs_pix_type;
-        const int porder[4];
-        const int cnt;
-    } pix_fmt;
-*/
+
     struct ri_struct {
         int framenr;
         __int64 bytepos;
