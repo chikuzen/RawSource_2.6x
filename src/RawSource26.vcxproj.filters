@@ -18,9 +18,6 @@
     <ClInclude Include="avisynth26.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="rawsource26.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="rawsource26.cpp">

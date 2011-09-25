@@ -7,7 +7,68 @@
     for avisynth2.6.
 */
 
-#include "rawsource26.h"
+#include <stdio.h>
+#include <io.h>
+#include "FCNTL.H"
+#include "windows.h"
+#include "avisynth26.h"
+
+#pragma warning(disable:4996)
+
+#define MAX_PIXTYPE_LEN 32
+#define MAX_Y4M_HEADER 128
+#define MIN_RESOLUTION 8
+#define MAX_WIDTH 65536
+
+#define Y4M_STREAM_MAGIC "YUV4MPEG2"
+#define Y4M_STREAM_MAGIC_LEN 9
+#define Y4M_FRAME_MAGIC "FRAME"
+#define Y4M_FRAME_MAGIC_LEN 5
+
+class RawSource: public IClip {
+
+    VideoInfo vi;
+    int h_rawfile;
+    __int64 filelen;
+    __int64 headeroffset;
+    int y4m_headerlen;
+    char y4m_headerbuf[MAX_Y4M_HEADER];
+    char pix_type[MAX_PIXTYPE_LEN];
+    int mapping[4];
+    int mapcnt;
+    int ret;
+    int level;
+    bool show;
+    unsigned char *rawbuf;
+
+
+    struct ri_struct {
+        int framenr;
+        __int64 bytepos;
+    };
+    struct i_struct {
+        __int64 index;
+        char type; //Key, Delta, Bigdelta
+    };
+
+    ri_struct * rawindex;
+    i_struct * index;
+
+    int ParseHeader();
+
+public:
+    RawSource (const char *sourcefile, const int a_width, const int a_height,
+               const char *a_pix_type, const int a_fpsnum, const int a_fpsden,
+               const char *a_index, const bool a_show, IScriptEnvironment *env);
+    virtual ~RawSource();
+
+// avisynth virtual functions
+    PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment *env);
+    bool __stdcall GetParity(int n);
+    void __stdcall GetAudio(void *buf, __int64 start, __int64 count, IScriptEnvironment* env) {}
+    const VideoInfo& __stdcall GetVideoInfo() {return vi;}
+    void __stdcall SetCacheHints(int cachehints,int frame_range) {}
+};
 
 RawSource::RawSource (const char *sourcefile, const int a_width, const int a_height,
                       const char *a_pix_type, const int a_fpsnum, const int a_fpsden,
@@ -102,11 +163,12 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
         {"YV12",  VideoInfo::CS_YV12,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3},
         {"NV12",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 2},
         {"NV21",  VideoInfo::CS_YV12,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 2},
-        {"Y8",    VideoInfo::CS_Y8,    {PLANAR_Y, 0,        0,        0}, 1},
-        {"GRAY",  VideoInfo::CS_Y8,    {PLANAR_Y, 0,        0,        0}, 1},
+        {"Y8",    VideoInfo::CS_Y8,    {PLANAR_Y,        0,        0, 0}, 1},
+        {"GRAY",  VideoInfo::CS_Y8,    {PLANAR_Y,        0,        0, 0}, 1},
         {NULL}
     };
     vi.pixel_type = VideoInfo::CS_UNKNOWN;
+   // for (int i = 0; pixelformats[i].fmt_name; i++) {
     int i = 0;
     while (pixelformats[i].fmt_name) {
         if(!stricmp(pix_type, pixelformats[i].fmt_name)) {
@@ -118,8 +180,8 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
     }
     if (vi.pixel_type == VideoInfo::CS_UNKNOWN)
         env->ThrowError("Invalid pixel type. Supported: RGB, RGBA, BGR, BGRA, ARGB,"
-                        " ABGR, YUY2, YUYV, UYVY, YVYU, VYUY, YV16, I422, YV411,"
-                        " I411, YV12, I420, IYUV, NV12, NV21, Y8, GRAY");
+                        " ABGR, YV24, I444, YUY2, YUYV, UYVY, YVYU, VYUY, YV16, I422,"
+                        " YV411, Y41B, I411, YV12, I420, IYUV, NV12, NV21, Y8, GRAY");
 
     int framesize = (vi.width * vi.height * vi.BitsPerPixel()) >> 3;
 
@@ -269,7 +331,7 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, IScriptEnvironment* env)
     int samples_per_line;
     int number_of_lines;
     int pitch;
-    int i, j, k;
+    //int i, j, k;
 
     if (show && !level) {
     //output debug info - call Subtitle
@@ -297,7 +359,7 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, IScriptEnvironment* env)
         number_of_lines = dst->GetHeight(PLANAR_Y);
         pdst = dst->GetWritePtr(PLANAR_Y);
         pitch = dst->GetPitch(PLANAR_Y);
-        for (i = 0; i < number_of_lines; i++) {
+        for (int i = 0; i < number_of_lines; i++) {
             memset(rawbuf, 0, vi.width);
             ret = _read(h_rawfile, rawbuf, samples_per_line);
             memcpy(pdst, rawbuf, samples_per_line);
@@ -308,10 +370,10 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, IScriptEnvironment* env)
         pitch = dst->GetPitch(mapping[1]);
         int pitch2 = dst->GetPitch(mapping[2]);
         unsigned char *pdst2 = dst->GetWritePtr(mapping[2]);
-        for (i = 0; i < number_of_lines; i++) {
+        for (int i = 0; i < number_of_lines; i++) {
             memset(rawbuf, 0, vi.width);
             ret = _read(h_rawfile, rawbuf, samples_per_line);
-            for (j = 0; j < (samples_per_line >> 1); j++) {
+            for (int j = 0; j < (samples_per_line >> 1); j++) {
                 pdst[j]  = rawbuf[j << 1];
                 pdst2[j] = rawbuf[(j << 1) + 1];
             }
@@ -319,12 +381,12 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, IScriptEnvironment* env)
             pdst2 += pitch2;
         }
     } else if (vi.IsPlanar()) {
-        for (i = 0; i < mapcnt; i++) {
+        for (int i = 0; i < mapcnt; i++) {
             samples_per_line = dst->GetRowSize(mapping[i]);
             number_of_lines = dst->GetHeight(mapping[i]);
             pdst = dst->GetWritePtr(mapping[i]);
             pitch = dst->GetPitch(mapping[i]);
-            for (j = 0; j < number_of_lines; j++) {
+            for (int j = 0; j < number_of_lines; j++) {
                 memset(rawbuf, 0, vi.width);
                 ret = _read(h_rawfile, rawbuf, samples_per_line);
                 memcpy (pdst, rawbuf, samples_per_line);
@@ -336,7 +398,7 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, IScriptEnvironment* env)
         number_of_lines = dst->GetHeight();
         pdst = dst->GetWritePtr();
         pitch = dst->GetPitch();
-        for (i = 0; i < number_of_lines; i++) {
+        for (int i = 0; i < number_of_lines; i++) {
             memset(rawbuf, 0, samples_per_line);
             ret = _read(h_rawfile, rawbuf, samples_per_line);
             memcpy(pdst, rawbuf, samples_per_line);
@@ -347,11 +409,11 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, IScriptEnvironment* env)
         number_of_lines = dst->GetHeight();
         pdst = dst->GetWritePtr();
         pitch = dst->GetPitch();
-        for (i = 0; i < number_of_lines; i++) {
+        for (int i = 0; i < number_of_lines; i++) {
             memset(rawbuf, 0, samples_per_line);
             ret = _read(h_rawfile, rawbuf, samples_per_line);
-            for (j = 0; j < samples_per_line / mapcnt; j++) {
-                for (k = 0; k < mapcnt; k++) {
+            for (int j = 0; j < samples_per_line / mapcnt; j++) {
+                for (int k = 0; k < mapcnt; k++) {
                     pdst[j * mapcnt + k] = rawbuf[j * mapcnt + mapping[k]];
                 }
             }
