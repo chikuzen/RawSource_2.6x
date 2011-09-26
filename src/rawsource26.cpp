@@ -19,6 +19,7 @@
 #define MAX_Y4M_HEADER 128
 #define MIN_RESOLUTION 8
 #define MAX_WIDTH 65536
+#define MAX_HEIGHT 65536
 
 #define Y4M_STREAM_MAGIC "YUV4MPEG2"
 #define Y4M_STREAM_MAGIC_LEN 9
@@ -100,6 +101,8 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
         ret = RawSource::ParseHeader();
         if (vi.width > MAX_WIDTH)
             env->ThrowError("Width too big(%d). Maximum acceptable width is %d.", vi.width, MAX_WIDTH);
+        if (vi.height > MAX_HEIGHT)
+            env->ThrowError("Height too big(%d). Maximum acceptable height is %d.", vi.height, MAX_HEIGHT);
         switch (ret) {
             case 4444:
                 strncpy(pix_type, "AYUV", 4);
@@ -532,6 +535,8 @@ AVSValue __cdecl Create_RawSource(AVSValue args, void* user_data, IScriptEnviron
         env->ThrowError("RawSource: width and height need to be %d or higher.", MIN_RESOLUTION);
     if (width > MAX_WIDTH)
         env->ThrowError("RawSource: width needs to be %d or lower.", MAX_WIDTH);
+    if (height > MAX_HEIGHT)
+        env->ThrowError("RawSource: height needs to be %d or lower.", MAX_HEIGHT);
     if (strlen(pix_type) > MAX_PIXTYPE_LEN - 1)
         env->ThrowError("RawSource: pixel_type needs to be %d chars or shorter.", MAX_PIXTYPE_LEN - 1);
     if (fpsnum < 1 || fpsden < 1)
