@@ -7,14 +7,13 @@
     for avisynth2.6.
 */
 
-#include <stdio.h>
 #include <io.h>
-#include "FCNTL.H"
-#include "windows.h"
+#include <stdio.h>
+#include <fcntl.h>
+#include <windows.h>
 #include "avisynth26.h"
 
 #pragma warning(disable:4996)
-
 #define MAX_PIXTYPE_LEN 32
 #define MAX_Y4M_HEADER 128
 #define MIN_RESOLUTION 8
@@ -26,7 +25,89 @@
 #define Y4M_FRAME_MAGIC "FRAME"
 #define Y4M_FRAME_MAGIC_LEN 5
 
-class RawSource: public IClip {
+typedef void (*FuncWriteDestFrame)(int fd, PVideoFrame& dst, BYTE* buff, int* order, int count, IScriptEnvironment* env);
+
+static void WriteNV420(int fd, PVideoFrame& dst, BYTE* buff, int* order, int count, IScriptEnvironment* env)
+{
+    int width = dst->GetRowSize(PLANAR_Y);
+    int height = dst->GetHeight(PLANAR_Y);
+    BYTE* dstp = dst->GetWritePtr(PLANAR_Y);
+    int pitch = dst->GetPitch(PLANAR_Y);
+    int read_size = width * height;
+
+    ZeroMemory(buff, read_size);
+    _read(fd, buff, read_size);
+    env->BitBlt(dstp, pitch, buff, width, width, height);
+
+    read_size >>= 1;
+    width >>= 1;
+    height >>= 1;
+    dstp = dst->GetWritePtr(order[1]);
+    pitch = dst->GetPitch(order[1]);
+    BYTE* dstp2 = dst->GetWritePtr(order[2]);
+    
+    ZeroMemory(buff, read_size);
+    _read(fd, buff, read_size);
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            dstp[j]  = buff[j << 1];
+            dstp2[j] = buff[(j << 1) + 1];
+        }
+        buff += width;
+        dstp += pitch;
+        dstp2 += pitch;
+    }
+}
+
+static void WritePlanar(int fd, PVideoFrame& dst, BYTE* buff, int* order, int count, IScriptEnvironment* env)
+{
+    for (int i = 0; i < count; i++) {
+        int debug = order[i];
+        int width = dst->GetRowSize(order[i]);
+        int height = dst->GetHeight(order[i]);
+        BYTE* dstp = dst->GetWritePtr(order[i]);
+        int pitch = dst->GetPitch(order[i]);
+        int read_size = width * height;
+        ZeroMemory(buff, read_size);
+        _read(fd, buff, read_size);
+        env->BitBlt(dstp, pitch, buff, width, width, height);
+    }
+}
+
+static void WritePacked(int fd, PVideoFrame& dst, BYTE* buff, int* order, int count, IScriptEnvironment* env)
+{
+    int width = dst->GetRowSize();
+    int height = dst->GetHeight();
+    BYTE* dstp = dst->GetWritePtr();
+    int pitch = dst->GetPitch();
+    int read_size = width * height;
+    ZeroMemory(buff, read_size);
+    _read(fd, buff, read_size);
+    env->BitBlt(dstp, pitch, buff, width, width, height);
+}
+
+static void WritePackedWithReorder(int fd, PVideoFrame& dst, BYTE* buff, int* order, int count, IScriptEnvironment* env)
+{
+    int width = dst->GetRowSize();
+    int height = dst->GetHeight();
+    BYTE* dstp = dst->GetWritePtr();
+    int pitch = dst->GetPitch();
+    int read_size = width * height;
+    ZeroMemory(buff, width * height);
+    _read(fd, buff, read_size);
+
+    for (int i = 0; i < height; i++) {
+        for (int j = 0, time = width / count; j < time; j++) {
+            for (int k = 0; k < count; k++) {
+                dstp[j * count + k] = buff[j * count + order[k]];
+            }
+        }
+        buff += width;
+        dstp += pitch;
+    }
+}
+
+class RawSource : public IClip {
 
     VideoInfo vi;
     int h_rawfile;
@@ -35,13 +116,12 @@ class RawSource: public IClip {
     int y4m_headerlen;
     char y4m_headerbuf[MAX_Y4M_HEADER];
     char pix_type[MAX_PIXTYPE_LEN];
-    int mapping[4];
-    int mapcnt;
+    int order[4];
+    int col_count;
     int ret;
     int level;
     bool show;
-    unsigned char *rawbuf;
-
+    BYTE *rawbuf;
 
     struct ri_struct {
         int framenr;
@@ -56,14 +136,13 @@ class RawSource: public IClip {
     i_struct * index;
 
     int ParseHeader();
+    FuncWriteDestFrame WriteDestFrame;
 
 public:
-    RawSource (const char *sourcefile, const int a_width, const int a_height,
-               const char *a_pix_type, const int a_fpsnum, const int a_fpsden,
-               const char *a_index, const bool a_show, IScriptEnvironment *env);
+    RawSource(const char *sourcefile, const int a_width, const int a_height,
+              const char *a_pix_type, const int a_fpsnum, const int a_fpsden,
+              const char *a_index, const bool a_show, IScriptEnvironment *env);
     virtual ~RawSource();
-
-// avisynth virtual functions
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment *env);
     bool __stdcall GetParity(int n);
     void __stdcall GetAudio(void *buf, __int64 start, __int64 count, IScriptEnvironment* env) {}
@@ -81,7 +160,7 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
     if ((filelen = _filelengthi64(h_rawfile)) == -1L)
         env->ThrowError("Cannot get videofile length.");
 
-    memset(&vi, 0, sizeof(vi));
+    ZeroMemory(&vi, sizeof(VideoInfo));
     vi.width = a_width;
     vi.height = a_height;
     vi.fps_numerator = a_fpsnum;
@@ -98,93 +177,72 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
 
     if (!strcmp(a_index, "")) {    //use header if valid else width, height, pixel_type from AVS are used
         ret = _read(h_rawfile, y4m_headerbuf, MAX_Y4M_HEADER);    //read some bytes and test on header
-        ret = RawSource::ParseHeader();
+        ret = ParseHeader();
         if (vi.width > MAX_WIDTH)
             env->ThrowError("Width too big(%d). Maximum acceptable width is %d.", vi.width, MAX_WIDTH);
         if (vi.height > MAX_HEIGHT)
             env->ThrowError("Height too big(%d). Maximum acceptable height is %d.", vi.height, MAX_HEIGHT);
         switch (ret) {
-            case 4444:
-                strncpy(pix_type, "AYUV", 4);
-                break;
-            case 444:
-                strncpy(pix_type, "I444", 4);
-                break;
-            case 422:
-                strncpy(pix_type, "I422", 4);
-                break;
-            case 411:
-                strncpy(pix_type, "I411", 4);
-                break;
-            case 420:
-                strncpy(pix_type, "I420", 4);
-                break;
-            case 8:
-                strncpy(pix_type, "GRAY", 4);
-                break;
-            case -1:
-                env->ThrowError("YUV4MPEG2 header error.");
-                break;
-            case -2:
-                env->ThrowError("This file's YUV4MPEG2 HEADER is unsupported.");
-            default:
-                break;
+        case -1:
+            env->ThrowError("YUV4MPEG2 header error.");
+            break;
+        case -2:
+            env->ThrowError("This file's YUV4MPEG2 HEADER is unsupported.");
+        default:
+            break;
         }
     }
 
-    typedef struct {
+    struct {
         char *fmt_name;
         int avs_pix_type;
         int order[4];
         int cnt;
-    } pix_fmt;
-
-    pix_fmt pixelformats[] = {
-        {"BGR",   VideoInfo::CS_BGR24, {0, 1, 2, 9}, 3},
-        {"BGR24", VideoInfo::CS_BGR24, {0, 1, 2, 9}, 3},
-        {"RGB",   VideoInfo::CS_BGR24, {2, 1, 0, 9}, 3},
-        {"RGB24", VideoInfo::CS_BGR24, {2, 1, 0, 9}, 3},
-        {"BGRA",  VideoInfo::CS_BGR32, {0, 1, 2, 3}, 4},
-        {"BGR32", VideoInfo::CS_BGR32, {0, 1, 2, 3}, 4},
-        {"RGBA",  VideoInfo::CS_BGR32, {2, 1, 0, 3}, 4},
-        {"RGB32", VideoInfo::CS_BGR32, {2, 1, 0, 3}, 4},
-        {"ARGB",  VideoInfo::CS_BGR32, {3, 2, 1, 0}, 4},
-        {"ABGR",  VideoInfo::CS_BGR32, {3, 0, 1, 2}, 4},
-        {"YUY2",  VideoInfo::CS_YUY2,  {0, 1, 2, 3}, 4},
-        {"YUYV",  VideoInfo::CS_YUY2,  {0, 1, 2, 3}, 4},
-        {"UYVY",  VideoInfo::CS_YUY2,  {1, 0, 3, 2}, 4},
-        {"VYUY",  VideoInfo::CS_YUY2,  {3, 0, 1, 2}, 4},
-        {"YV24",  VideoInfo::CS_YV24,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3},
-        {"I444",  VideoInfo::CS_YV24,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3},
-        {"YV16",  VideoInfo::CS_YV16,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3},
-        {"I422",  VideoInfo::CS_YV16,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3},
-        {"YV411", VideoInfo::CS_YV411, {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3},
-        {"Y41B",  VideoInfo::CS_YV411, {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3},
-        {"I411",  VideoInfo::CS_YV411, {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3},
-        {"I420",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3},
-        {"IYUV",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3},
-        {"YV12",  VideoInfo::CS_YV12,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3},
-        {"NV12",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 2},
-        {"NV21",  VideoInfo::CS_YV12,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 2},
-        {"Y8",    VideoInfo::CS_Y8,    {PLANAR_Y,        0,        0, 0}, 1},
-        {"GRAY",  VideoInfo::CS_Y8,    {PLANAR_Y,        0,        0, 0}, 1},
-        {NULL}
+        FuncWriteDestFrame func;
+    } pixelformats[] = {
+        {"BGR",   VideoInfo::CS_BGR24, {       0,        1,        2, 9}, 3, WritePacked           },
+        {"BGR24", VideoInfo::CS_BGR24, {       0,        1,        2, 9}, 3, WritePacked           },
+        {"RGB",   VideoInfo::CS_BGR24, {       2,        1,        0, 9}, 3, WritePackedWithReorder},
+        {"RGB24", VideoInfo::CS_BGR24, {       2,        1,        0, 9}, 3, WritePackedWithReorder},
+        {"BGRA",  VideoInfo::CS_BGR32, {       0,        1,        2, 3}, 4, WritePacked           },
+        {"BGR32", VideoInfo::CS_BGR32, {       0,        1,        2, 3}, 4, WritePacked           },
+        {"RGBA",  VideoInfo::CS_BGR32, {       2,        1,        0, 3}, 4, WritePackedWithReorder},
+        {"RGB32", VideoInfo::CS_BGR32, {       2,        1,        0, 3}, 4, WritePackedWithReorder},
+        {"ARGB",  VideoInfo::CS_BGR32, {       3,        2,        1, 0}, 4, WritePackedWithReorder},
+        {"ABGR",  VideoInfo::CS_BGR32, {       3,        0,        1, 2}, 4, WritePackedWithReorder},
+        {"YUY2",  VideoInfo::CS_YUY2,  {       0,        1,        2, 3}, 4, WritePacked           },
+        {"YUYV",  VideoInfo::CS_YUY2,  {       0,        1,        2, 3}, 4, WritePacked           },
+        {"UYVY",  VideoInfo::CS_YUY2,  {       1,        0,        3, 2}, 4, WritePackedWithReorder},
+        {"VYUY",  VideoInfo::CS_YUY2,  {       3,        0,        1, 2}, 4, WritePackedWithReorder},
+        {"YV24",  VideoInfo::CS_YV24,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, WritePlanar           },
+        {"I444",  VideoInfo::CS_YV24,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, WritePlanar           },
+        {"YV16",  VideoInfo::CS_YV16,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, WritePlanar           },
+        {"I422",  VideoInfo::CS_YV16,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, WritePlanar           },
+        {"YV411", VideoInfo::CS_YV411, {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, WritePlanar           },
+        {"Y41B",  VideoInfo::CS_YV411, {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, WritePlanar           },
+        {"I411",  VideoInfo::CS_YV411, {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, WritePlanar           },
+        {"I420",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, WritePlanar           },
+        {"IYUV",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, WritePlanar           },
+        {"YV12",  VideoInfo::CS_YV12,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, WritePlanar           },
+        {"NV12",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 2, WriteNV420            },
+        {"NV21",  VideoInfo::CS_YV12,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 2, WriteNV420            },
+        {"Y8",    VideoInfo::CS_Y8,    {PLANAR_Y,        0,        0, 0}, 1, WritePlanar           },
+        {"GRAY",  VideoInfo::CS_Y8,    {PLANAR_Y,        0,        0, 0}, 1, WritePlanar           },
+        {pix_type, VideoInfo::CS_UNKNOWN, NULL}
     };
-    vi.pixel_type = VideoInfo::CS_UNKNOWN;
-   // for (int i = 0; pixelformats[i].fmt_name; i++) {
     int i = 0;
-    while (pixelformats[i].fmt_name) {
-        if(!stricmp(pix_type, pixelformats[i].fmt_name)) {
-            vi.pixel_type = pixelformats[i].avs_pix_type;
-            memcpy(mapping, pixelformats[i].order, sizeof(pixelformats[i].order));
-            mapcnt = pixelformats[i].cnt;
-        }
+    while (stricmp(pix_type, pixelformats[i].fmt_name))
         i++;
-    }
-    if (vi.pixel_type == VideoInfo::CS_UNKNOWN)
+    if (pixelformats[i].avs_pix_type == VideoInfo::CS_UNKNOWN) {
         env->ThrowError("Invalid pixel type. Supported: RGB, RGBA, BGR, BGRA, ARGB,"
                         " ABGR, YV24, I444, YUY2, YUYV, UYVY, YVYU, VYUY, YV16, I422,"
                         " YV411, Y41B, I411, YV12, I420, IYUV, NV12, NV21, Y8, GRAY");
+    }
+
+    vi.pixel_type = pixelformats[i].avs_pix_type;
+    memcpy(order, pixelformats[i].order, sizeof(pixelformats[i].order));
+    col_count = pixelformats[i].cnt;
+    WriteDestFrame = pixelformats[i].func;
 
     int framesize = (vi.width * vi.height * vi.BitsPerPixel()) >> 3;
 
@@ -195,7 +253,7 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
 
     index = new i_struct[maxframe + 1];
     rawindex = new ri_struct[maxframe + 1];
-    rawbuf = new unsigned char[vi.IsPlanar() ? vi.width : vi.width * (vi.BitsPerPixel() >> 3)];
+    rawbuf = new unsigned char[vi.IsPlanar() ? vi.width * vi.height: vi.width * vi.height * (vi.BitsPerPixel() >> 3)];
 
 //index build using string descriptor
     char * indstr;
@@ -330,99 +388,23 @@ RawSource::~RawSource() {
 
 PVideoFrame __stdcall RawSource::GetFrame(int n, IScriptEnvironment* env)
 {
-    unsigned char *pdst;
-    int samples_per_line;
-    int number_of_lines;
-    int pitch;
-    //int i, j, k;
-
-    if (show && !level) {
-    //output debug info - call Subtitle
-
+    if (show && !level) {    //output debug info - call Subtitle
         char message[255];
         sprintf(message, "%d : %I64d %c", n, index[n].index, index[n].type);
-
         const char* arg_names[11] = {0, 0, "x", "y", "font", "size", "text_color", "halo_color"};
         AVSValue args[8] = {this, AVSValue(message), 4, 12, "Arial", 15, 0xFFFFFF, 0x000000};
-
         level = 1;
         PClip resultClip = (env->Invoke("Subtitle", AVSValue(args, 8), arg_names )).AsClip();
         PVideoFrame src1 = resultClip->GetFrame(n, env);
         level = 0;
         return src1;
-    //end debug
     }
 
     PVideoFrame dst = env->NewVideoFrame(vi);
-    if ((ret = (int)_lseeki64(h_rawfile, index[n].index, SEEK_SET)) == -1L)
+    if ((ret = (int)_lseeki64(h_rawfile, index[n].index, SEEK_SET)) == -1L) {
         return dst;    //error. do nothing
-
-    if (!stricmp(pix_type, "NV12") || !stricmp(pix_type, "NV21")) {
-        samples_per_line = dst->GetRowSize(PLANAR_Y);
-        number_of_lines = dst->GetHeight(PLANAR_Y);
-        pdst = dst->GetWritePtr(PLANAR_Y);
-        pitch = dst->GetPitch(PLANAR_Y);
-        for (int i = 0; i < number_of_lines; i++) {
-            memset(rawbuf, 0, vi.width);
-            ret = _read(h_rawfile, rawbuf, samples_per_line);
-            memcpy(pdst, rawbuf, samples_per_line);
-            pdst += pitch;
-        }
-        number_of_lines >>= 1;
-        pdst = dst->GetWritePtr(mapping[1]);
-        pitch = dst->GetPitch(mapping[1]);
-        int pitch2 = dst->GetPitch(mapping[2]);
-        unsigned char *pdst2 = dst->GetWritePtr(mapping[2]);
-        for (int i = 0; i < number_of_lines; i++) {
-            memset(rawbuf, 0, vi.width);
-            ret = _read(h_rawfile, rawbuf, samples_per_line);
-            for (int j = 0; j < (samples_per_line >> 1); j++) {
-                pdst[j]  = rawbuf[j << 1];
-                pdst2[j] = rawbuf[(j << 1) + 1];
-            }
-            pdst  += pitch;
-            pdst2 += pitch2;
-        }
-    } else if (vi.IsPlanar()) {
-        for (int i = 0; i < mapcnt; i++) {
-            samples_per_line = dst->GetRowSize(mapping[i]);
-            number_of_lines = dst->GetHeight(mapping[i]);
-            pdst = dst->GetWritePtr(mapping[i]);
-            pitch = dst->GetPitch(mapping[i]);
-            for (int j = 0; j < number_of_lines; j++) {
-                memset(rawbuf, 0, vi.width);
-                ret = _read(h_rawfile, rawbuf, samples_per_line);
-                memcpy (pdst, rawbuf, samples_per_line);
-                pdst += pitch;
-            }
-        }
-    } else if (!strnicmp(pix_type, "BGR", 3) || !strnicmp(pix_type, "YUY", 3)) {
-        samples_per_line = dst->GetRowSize();
-        number_of_lines = dst->GetHeight();
-        pdst = dst->GetWritePtr();
-        pitch = dst->GetPitch();
-        for (int i = 0; i < number_of_lines; i++) {
-            memset(rawbuf, 0, samples_per_line);
-            ret = _read(h_rawfile, rawbuf, samples_per_line);
-            memcpy(pdst, rawbuf, samples_per_line);
-            pdst += pitch;
-        }
-    } else {
-        samples_per_line = dst->GetRowSize();
-        number_of_lines = dst->GetHeight();
-        pdst = dst->GetWritePtr();
-        pitch = dst->GetPitch();
-        for (int i = 0; i < number_of_lines; i++) {
-            memset(rawbuf, 0, samples_per_line);
-            ret = _read(h_rawfile, rawbuf, samples_per_line);
-            for (int j = 0; j < samples_per_line / mapcnt; j++) {
-                for (int k = 0; k < mapcnt; k++) {
-                    pdst[j * mapcnt + k] = rawbuf[j * mapcnt + mapping[k]];
-                }
-            }
-            pdst += pitch;
-        }
     }
+    WriteDestFrame(h_rawfile, dst, rawbuf, order, col_count, env);
     return dst;
 }
 
@@ -433,13 +415,13 @@ int RawSource::ParseHeader()
 
     vi.height = 0;
     vi.width = 0;
-    int colorspace = 420;
+    strcpy(pix_type, "i420");
 
-    unsigned int numerator = 0, denominator = 0;
+    unsigned int numerator = 0;
+    unsigned int denominator = 0;
     char ctag[9] = {0};
-    int i = Y4M_STREAM_MAGIC_LEN;
-
-    while ((i < MAX_Y4M_HEADER) && (y4m_headerbuf[i] != '\n')) {
+    int i;
+    for (i = Y4M_STREAM_MAGIC_LEN; (i < MAX_Y4M_HEADER) && (y4m_headerbuf[i] != '\n'); i++) {
         if (!strncmp(y4m_headerbuf + i, " W", 2)) {
             i += 2;
             sscanf(y4m_headerbuf + i, "%d", &vi.width);
@@ -472,32 +454,33 @@ int RawSource::ParseHeader()
         if (!strncmp(y4m_headerbuf + i, " C", 2)) {
             i += 2;
             sscanf(y4m_headerbuf + i, "%s", ctag);
-            if (!strncmp(ctag, "444alpha", 8))
-                colorspace = 4444;
-            else if (!strncmp(ctag, "444", 3))
-                colorspace = 444;
-            else if (!strncmp(ctag, "422", 3))
-                colorspace = 422;
-            else if (!strncmp(ctag, "411", 3))
-                colorspace = 411;
-            else if (!strncmp(ctag, "420", 3))
-                colorspace = 420;
-            else if (!strncmp(ctag, "mono", 4))
-                colorspace = 8;
-            else
+            if (!strncmp(ctag, "444alpha", 8)) {
+                strcpy(pix_type, "AYUV");
+            } else if (!strncmp(ctag, "444", 3)) {
+                strcpy(pix_type, "I444");
+            } else if (!strncmp(ctag, "422", 3)) {
+                strcpy(pix_type, "I422");
+            } else if (!strncmp(ctag, "411", 3)) {
+                strcpy(pix_type, "I411");
+            } else if (!strncmp(ctag, "420", 3)) {
+                strcpy(pix_type, "I420");
+            } else if (!strncmp(ctag, "mono", 4)) {
+                strcpy(pix_type, "GRAY");
+            } else {
                 return -1;
+            }
         }
-
-        i++;
     }
 
-    if (!numerator || !denominator || !vi.width || !vi.height)
+    if (!numerator || !denominator || !vi.width || !vi.height) {
         return -1;
+    }
 
     i++;
 
-    if (strncmp(y4m_headerbuf + i, Y4M_FRAME_MAGIC, Y4M_FRAME_MAGIC_LEN))
+    if (strncmp(y4m_headerbuf + i, Y4M_FRAME_MAGIC, Y4M_FRAME_MAGIC_LEN)) {
         return -1;
+    }
 
     headeroffset = i;
 
@@ -509,7 +492,7 @@ int RawSource::ParseHeader()
     y4m_headerlen = i - (int)headeroffset + 1;
     headeroffset = headeroffset + y4m_headerlen;
 
-    return colorspace;
+    return 0;
 }
 
 bool __stdcall RawSource::GetParity(int n)
@@ -517,7 +500,7 @@ bool __stdcall RawSource::GetParity(int n)
     return vi.image_type == VideoInfo::IT_TFF;
 }
 
-AVSValue __cdecl Create_RawSource(AVSValue args, void* user_data, IScriptEnvironment* env)
+AVSValue __cdecl CreateRawSource(AVSValue args, void* user_data, IScriptEnvironment* env)
 {
     if (!args[0].Defined())
         env->ThrowError("RawSource: No source specified");
@@ -547,6 +530,6 @@ AVSValue __cdecl Create_RawSource(AVSValue args, void* user_data, IScriptEnviron
 
 extern "C" __declspec(dllexport) const char* __stdcall AvisynthPluginInit2(IScriptEnvironment* env)
 {
-  env->AddFunction("RawSource","[file]s[width]i[height]i[pixel_type]s[fpsnum]i[fpsden]i[index]s[show]b",Create_RawSource,0);
-  return 0;
+  env->AddFunction("RawSource","[file]s[width]i[height]i[pixel_type]s[fpsnum]i[fpsden]i[index]s[show]b",CreateRawSource,0);
+  return "RawSource for AviSynth2.6x";
 }
