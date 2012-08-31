@@ -1,4 +1,4 @@
-RawSource_26_dll_20110925
+RawSource_26_dll_20120831
 
 sourcecode:
 https://github.com/chikuzen/RawSource_2.6x
