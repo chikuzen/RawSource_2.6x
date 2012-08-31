@@ -24,18 +24,13 @@
     pixel_type. The index string can contain all or partial positions of the frames.</li>
 </ul>
 <p>Supported <var>pixel_type</var>s are:<br>
-  &nbsp;&nbsp;RGB, RGBA, BGR, BGRA, ARGB, ABGR (interleaved RGB without subsampling, resulting 
-  in AviSynth's RGB24 or RGB32)<br>
-  &nbsp;&nbsp;YUY2(YUYV), YVYU, UYVY, VYUY (interleaved horizontally subsampled resulting 
-  in AviSynth's YUY2)<br>
-  &nbsp;&nbsp;I422, YV16 (planar horizontally subsampled, it is converted to AviSynth's 
-  YV16)<br>
-  &nbsp;&nbsp;I420(IYUV), YV12 (planar horizontally and vertically subsampled resulting 
-  in AviSynth's YV12)<br>
-  &nbsp;&nbsp;I411(Y41B), YV411 (planar horizontally subsampled, it is converted to AviSynth's
-  YV411)<br>
-  &nbsp;&nbsp;NV12, NV21 (planar horizontally and vertically subsampled resulting
-  in AviSynth's YV12)<br>
+  &nbsp;&nbsp;RGB, RGBA, BGR, BGRA, ARGB, ABGR (interleaved RGB without subsampling, resulting in AviSynth's RGB24 or RGB32)<br>
+  &nbsp;&nbsp;YUY2(YUYV), YVYU, UYVY, VYUY (interleaved horizontally subsampled resulting in AviSynth's YUY2)<br>
+  &nbsp;&nbsp;I444, YV24 (planar without subsampling, resulting in AviSynth's YV24)<br>
+  &nbsp;&nbsp;I422, YV16 (planar horizontally subsampled, it is converted to AviSynth's YV16)<br>
+  &nbsp;&nbsp;I420(IYUV), YV12 (planar horizontally and vertically subsampled resulting in AviSynth's YV12)<br>
+  &nbsp;&nbsp;I411(Y41B), YV411 (planar horizontally subsampled, it is converted to AviSynth's YV411)<br>
+  &nbsp;&nbsp;NV12, NV21 (planar horizontally and vertically subsampled resulting in AviSynth's YV12)<br>
   &nbsp;&nbsp;Y8(aka GRAY) (luma only resulting in AviSynth's Y8)
   </p>
 <p>Maximal <var>width/height</var> is 65536.<br>
@@ -187,7 +182,8 @@ frame 101 at 1200000 (using delta)<br>...<br>frame 125 at 1490000 (using big_del
 <h4>Ernst Pech&eacute;, 2005-10-13</h4>
 <h4>Oka Motofumi, 2011-06-14</h4>
 <br><br>
-Version 2011-06-14 - First release.
-Version 2011-09-25 - Change maximum width into 65536.
+Version 2011-06-14 - First release.<br>
+Version 2011-09-25 - Change maximum width into 65536.<br>
+Version 2012-08-31 - Expand the size of read buffer to one frame at maximum, and change writing algorithm.<br>
 </body>
 </html>
