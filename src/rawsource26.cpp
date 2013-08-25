@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <windows.h>
-#include "avisynth26.h"
+#include "avisynth.h"
 
 #pragma warning(disable:4996)
 #define MAX_PIXTYPE_LEN 32
@@ -24,6 +24,8 @@
 #define Y4M_STREAM_MAGIC_LEN 9
 #define Y4M_FRAME_MAGIC "FRAME"
 #define Y4M_FRAME_MAGIC_LEN 5
+
+static const AVS_Linkage* AVS_linkage = 0;
 
 typedef void (*FuncWriteDestFrame)(int fd, PVideoFrame& dst, BYTE* buff, int* order, int count, IScriptEnvironment* env);
 
@@ -147,7 +149,7 @@ public:
     bool __stdcall GetParity(int n);
     void __stdcall GetAudio(void *buf, __int64 start, __int64 count, IScriptEnvironment* env) {}
     const VideoInfo& __stdcall GetVideoInfo() {return vi;}
-    void __stdcall SetCacheHints(int cachehints,int frame_range) {}
+    int __stdcall SetCacheHints(int cachehints,int frame_range) { return 0; }
 };
 
 RawSource::RawSource (const char *sourcefile, const int a_width, const int a_height,
@@ -528,8 +530,12 @@ AVSValue __cdecl CreateRawSource(AVSValue args, void* user_data, IScriptEnvironm
     return new RawSource(source, width, height, pix_type, fpsnum, fpsden, index, show, env);
 }
 
-extern "C" __declspec(dllexport) const char* __stdcall AvisynthPluginInit2(IScriptEnvironment* env)
+extern "C" __declspec(dllexport) const char* __stdcall
+AvisynthPluginInit3(IScriptEnvironment* env, const AVS_Linkage* const vectors)
 {
-  env->AddFunction("RawSource","[file]s[width]i[height]i[pixel_type]s[fpsnum]i[fpsden]i[index]s[show]b",CreateRawSource,0);
+    AVS_linkage = vectors;
+    env->AddFunction("RawSource",
+                     "[file]s[width]i[height]i[pixel_type]s[fpsnum]i[fpsden]i[index]s[show]b",
+                     CreateRawSource, 0);
   return "RawSource for AviSynth2.6x";
 }

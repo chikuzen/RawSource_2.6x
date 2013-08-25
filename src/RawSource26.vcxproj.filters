@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="avisynth26.h">
+    <ClInclude Include="avisynth.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

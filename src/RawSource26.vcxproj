@@ -67,10 +67,12 @@
       <EnableEnhancedInstructionSet>StreamingSIMDExtensions</EnableEnhancedInstructionSet>
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
+      <OmitFramePointers>true</OmitFramePointers>
+      <CallingConvention>StdCall</CallingConvention>
     </ClCompile>
     <Link>
       <TargetMachine>MachineX86</TargetMachine>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
@@ -81,7 +83,7 @@
     <ClCompile Include="rawsource26.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="avisynth26.h" />
+    <ClInclude Include="avisynth.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="rawsource26.html">
