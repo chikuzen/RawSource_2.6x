@@ -1,3 +1,13 @@
+/*
+RawSource26 - reads raw video data files
+
+Author: Oka Motofumi (chikuzen.mo at gmail dot com)
+
+This program is rewriting of RawSource.dll(original author is Ernst Pech)
+for avisynth2.6x/Avisynth+.
+*/
+
+
 #include <io.h>
 #include <fcntl.h>
 #include <cstdint>
@@ -117,3 +127,4 @@ write_black_frame(PVideoFrame& dst, const VideoInfo& vi) noexcept
     memset(dst->GetWritePtr(PLANAR_U), 0x80, size);
     memset(dst->GetWritePtr(PLANAR_V), 0x80, size);
 }
+

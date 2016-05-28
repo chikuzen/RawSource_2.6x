@@ -1,3 +1,13 @@
+/*
+RawSource26 - reads raw video data files
+
+Author: Oka Motofumi (chikuzen.mo at gmail dot com)
+
+This program is rewriting of RawSource.dll(original author is Ernst Pech)
+for avisynth2.6x/Avisynth+.
+*/
+
+
 #ifndef RAWSOURCE_COMMON_H
 #define RAWSOURCE_COMMON_H
 
@@ -32,6 +42,7 @@ struct rindex {
 struct i_struct {
     int64_t index;
     char type; //Key, Delta, Bigdelta
+    i_struct() : index(0), type(0) {}
 };
 
 

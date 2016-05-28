@@ -3,9 +3,10 @@
 
     Author: Oka Motofumi (chikuzen.mo at gmail dot com)
 
-    This program is rewriting of RawSource.dll(original author is Pech Ernst)
-    for avisynth2.6.
+    This program is rewriting of RawSource.dll(original author is Ernst Pech)
+    for avisynth2.6x/Avisynth+.
 */
+
 
 #include <io.h>
 #include <fcntl.h>
@@ -90,8 +91,8 @@ void RawSource::setProcess(const char* pix_type)
         { pix_type, VideoInfo::CS_UNKNOWN, {0, 0, 0, 0}, 0, nullptr }
     };
     int i = 0;
-    while (stricmp(pix_type, pixelformats[i].fmt_name))
-        i++;
+    while (stricmp(pix_type, pixelformats[i].fmt_name)) ++i;
+
     validate(pixelformats[i].avs_pix_type == VideoInfo::CS_UNKNOWN,
              "Invalid pixel type. Supported: RGB, RGBA, BGR, BGRA, ARGB,"
              " ABGR, YV24, I444, YUY2, YUYV, UYVY, YVYU, VYUY, YV16, I422,"
@@ -126,10 +127,10 @@ RawSource::RawSource (const char *source, const int width, const int height,
     int64_t header_offset = 0;
     int64_t frame_offset = 0;
 
-    if (strlen(a_index) == 0) {    //use header if valid else width, height, pixel_type from AVS are used
+    if (strlen(a_index) == 0) { //use header if valid else width, height, pixel_type from AVS are used
         std::vector<char> read_buff(256, 0);
         char* data = read_buff.data();
-        _read(fileHandle, data, read_buff.size());    //read some bytes and test on header
+        _read(fileHandle, data, read_buff.size()); //read some bytes and test on header
         bool ret = parse_y4m(read_buff, vi, header_offset, frame_offset);
 
         if (vi.width > MAX_WIDTH || vi.height > MAX_HEIGHT) {
@@ -152,18 +153,17 @@ RawSource::RawSource (const char *source, const int width, const int height,
 
     validate(maxframe < 1, "File too small for even one frame.");
 
-    index.resize(maxframe + 1);
-
-    rawbuf = reinterpret_cast<uint8_t*>(
-        _aligned_malloc(vi.IsPlanar() ? vi.width * vi.height : framesize, 16));
-    validate(rawbuf == nullptr, "failed to allocate read buffer.");
-
     //index build using string descriptor
     std::vector<rindex> rawindex;
     set_rawindex(rawindex, a_index, header_offset, frame_offset, framesize);
 
     //create full index and get number of frames.
+    index.resize(maxframe + 1);
     vi.num_frames = generate_index(index, rawindex, framesize, fileSize);
+
+    rawbuf = reinterpret_cast<uint8_t*>(
+        _aligned_malloc(vi.IsPlanar() ? vi.width * vi.height : framesize, 16));
+    validate(rawbuf == nullptr, "failed to allocate read buffer.");
 }
 
 
@@ -192,7 +192,7 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
 }
 
 
-AVSValue __cdecl CreateRawSource(AVSValue args, void* user_data, ise_t* env)
+AVSValue __cdecl create_rawsource(AVSValue args, void* user_data, ise_t* env)
 {
     char buff[128] = {};
 
@@ -239,9 +239,18 @@ extern "C" __declspec(dllexport) const char* __stdcall
 AvisynthPluginInit3(ise_t* env, const AVS_Linkage* const vectors)
 {
     AVS_linkage = vectors;
-    env->AddFunction("RawSource",
-                     "[file]s[width]i[height]i[pixel_type]s[fpsnum]i[fpsden]i[index]s[show]b",
-                     CreateRawSource, 0);
+
+    const char* args =
+        "[file]s"
+        "[width]i"
+        "[height]i"
+        "[pixel_type]s"
+        "[fpsnum]i"
+        "[fpsden]i"
+        "[index]s"
+        "[show]b";
+
+    env->AddFunction("RawSource", args, create_rawsource, nullptr);
 
     if (env->FunctionExists("SetFilterMTMode")) {
         static_cast<IScriptEnvironment2*>(
@@ -250,3 +259,4 @@ AvisynthPluginInit3(ise_t* env, const AVS_Linkage* const vectors)
 
     return "RawSource for AviSynth2.6x/Avisynth+.";
 }
+

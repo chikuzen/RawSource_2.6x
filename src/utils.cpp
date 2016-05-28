@@ -1,3 +1,13 @@
+/*
+RawSource26 - reads raw video data files
+
+Author: Oka Motofumi (chikuzen.mo at gmail dot com)
+
+This program is rewriting of RawSource.dll(original author is Ernst Pech)
+for avisynth2.6x/Avisynth+.
+*/
+
+
 #include <cstdio>
 #include <cinttypes>
 #include "common.h"
@@ -211,3 +221,4 @@ int generate_index(std::vector<i_struct>& index, std::vector<rindex>& rawindex,
     }
     return frame;
 }
+

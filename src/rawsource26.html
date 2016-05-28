@@ -1,13 +1,20 @@
-﻿<html>
+﻿<DOCTYPE HTML>
+<html>
 <head>
+<meta charset="utf-8">
 <title>RawSource26</title>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 </head>
 <body bgcolor="#BED8CB" text="#000000">
 <h1>RawSource26</h1>
 <h3>Loading raw video data from files</h3>
-<p>for AviSynth 2.6.0 alpha2 or later<br>
-</p>
+<p>for AviSynth 2.6.0 / Avisynth+ r1576 or greater</p>
+<h4>requirements</h4>
+<ul>
+    <li>Windows Vista sp2 or later</li>
+    <li>avisynth2.6.0 or later / Avisynth+ r1576 or greater</li>
+    <li>Visual C++ Redistributable for Visual Studio 2015</li>
+</ul>
+<h4>How to use</h4>
 <p><code>RawSource</code> (<var>string &quot;file&quot;, int &quot;width&quot;, 
   int &quot;height&quot;, string &quot;pixel_type&quot;, int &quot;fpsnum&quot;,
   int &quot;fpsden&quot;, string &quot;index&quot;, bool &quot;show&quot;</var>)<br>
@@ -42,7 +49,7 @@
   &nbsp;D = position by adding current delta is used<br>
   &nbsp;B = position by adding currend big_delta is used</p>
 <h4><b>Some simple examples:</b></h4>
-<table width="75%" border="1">
+<table border="1">
   <tr> 
     <td> 
       <pre>RawSource(&quot;d:\yuv4mpeg.y4m&quot;)  #this assumes there is a valid YUV4MPEG2-header inside.
@@ -51,7 +58,7 @@
   </tr>
 </table>
 <br>
-<table width="75%" border="1">
+<table border="1">
   <tr> 
     <td> 
       <pre>RawSource(&quot;d:\src6_625.raw&quot;,720,576,&quot;BGRA&quot;) # really a raw file<br>                                            # if you are unsure about the pixel_type, simply try out all possible values.</pre>
@@ -60,7 +67,7 @@
 </table>
 <h4><b>Using an index-string:</b></h4>
 <p>You can enter the byte positions of the video frames directly.</p>
-<table width="75%" border="1">
+<table border="1">
   <tr> 
     <td> 
       <pre>RawSource(&quot;d:\yuv.mov&quot;,720,576,&quot;UYVY&quot;, index=&quot;0:192512 1:1021952 25:21120512 50:42048512 75:62976512&quot;)</pre>
@@ -84,7 +91,7 @@
   <var>big_delta</var> is reset to 0 if the resulting position would be behind the 
   given one (see beyond).</p>
 <p>Here are some possible cases:</p>
-<table width="75%" border="1">
+<table border="1">
   <tr valign="top"> 
     <td width="11%"> 
       <pre>  0:    0</pre>
@@ -162,7 +169,7 @@ frame 101 at 1200000 (using delta)<br>...<br>frame 125 at 1490000 (using big_del
 </table>
 <p>The index string is treated as a filename, if there is an &quot;.&quot; inside. 
   The data is then read from that file, line breaks don't matter.</p>
-<h4><b>Finding those byte positions:</b></h4>
+<h4>Finding those byte positions:</h4>
 <p>With <font color="#0033FF">yuvscan.exe</font> you can try to analyze files 
   which contain YUV-data with only valid luma and chroma data (~16-240).<br>
   The program searches for big uninterrupted blocks without bytes &lt; 16 or &gt;240 
@@ -178,12 +185,15 @@ frame 101 at 1200000 (using delta)<br>...<br>frame 125 at 1490000 (using big_del
   10 ... 255-10)<br>
   <tt>round_by_bytes</tt>: as most data is stored at nice positions, the output 
   can be rounded. default 9 which means 2^9 = $100</p>
-<p>&nbsp;</p>
-<h4>Ernst Pech&eacute;, 2005-10-13</h4>
-<h4>Oka Motofumi, 2011-06-14</h4>
-<br><br>
+<h4>note:</h4>
+<p>On Avisynth+ MT, this filter is automatically registerd as MT_SERIALIZED.<br>
+You don't have to set it yourself.</p>
+<h4>original author:Ernst Pech&eacute;, 2005-10-13</h4>
+<h4>modified by Oka Motofumi, 2011-06-14</h4>
+<p>
 Version 2011-06-14 - First release.<br>
 Version 2011-09-25 - Change maximum width into 65536.<br>
 Version 2012-08-31 - Expand the size of read buffer to one frame at maximum, and change writing algorithm.<br>
+Version 2016-05-29 - Add 64bit binary</p>
 </body>
 </html>
