@@ -13,8 +13,6 @@
 #include <cstdint>
 #include "common.h"
 
-#define MAX_PIXTYPE_LEN 32
-#define MAX_Y4M_HEADER 128
 
 
 typedef void (*FuncWriteDestFrame)(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, ise_t* env);
@@ -104,7 +102,6 @@ class RawSource : public IClip {
     VideoInfo vi;
     int fileHandle;
     int64_t fileSize;
-    char pix_type[MAX_PIXTYPE_LEN];
     int order[4];
     int col_count;
     int ret;
@@ -124,6 +121,7 @@ class RawSource : public IClip {
     ri_struct * rawindex;
     i_struct * index;
 
+    void setProcess(const char* pix_type);
     FuncWriteDestFrame WriteDestFrame;
 
 public:
@@ -138,54 +136,14 @@ public:
     int __stdcall SetCacheHints(int cachehints,int frame_range) { return 0; }
 };
 
-RawSource::RawSource (const char *sourcefile, const int a_width, const int a_height,
-                      const char *a_pix_type, const int a_fpsnum, const int a_fpsden,
-                      const char *a_index, const bool a_show, ise_t *env)
+
+void RawSource::setProcess(const char* pix_type)
 {
-    if ((fileHandle = _open(sourcefile, _O_BINARY | _O_RDONLY)) == -1)
-        env->ThrowError("Cannot open videofile.");
-
-    if ((fileSize = _filelengthi64(fileHandle)) == -1L)
-        env->ThrowError("Cannot get videofile length.");
-
-    ZeroMemory(&vi, sizeof(VideoInfo));
-    vi.width = a_width;
-    vi.height = a_height;
-    vi.fps_numerator = a_fpsnum;
-    vi.fps_denominator = a_fpsden;
-    vi.SetFieldBased(false);
-
-    strcpy(pix_type, a_pix_type);
-
-    level = 0;
-    show = a_show;
-
-    int64_t header_offset = 0;
-    int64_t frame_offset = 0;
-
-    if (strlen(a_index) == 0) {    //use header if valid else width, height, pixel_type from AVS are used
-        std::vector<char> read_buff(256, 0);
-        char* data = read_buff.data();
-        _read(fileHandle, data, read_buff.size());    //read some bytes and test on header
-        bool ret = parse_y4m(read_buff, vi, header_offset, frame_offset);
-
-        if (vi.width > MAX_WIDTH || vi.height > MAX_HEIGHT) {
-            const char* msg = "Resolution too big(%d x %d)."
-                              " Maximum acceptable resolution is %u x %u.";
-            sprintf(data, msg, vi.width, vi.height, MAX_WIDTH, MAX_HEIGHT);
-            throw std::runtime_error(data);
-        }
-
-        if (ret) {
-            strcpy(pix_type, data);
-        }
-    }
-
-    struct {
-        char *fmt_name;
-        int avs_pix_type;
-        int order[4];
-        int cnt;
+    const struct {
+        const char *fmt_name;
+        const int avs_pix_type;
+        const int order[4];
+        const int cnt;
         FuncWriteDestFrame func;
     } pixelformats[] = {
         {"BGR",   VideoInfo::CS_BGR24, {       0,        1,        2, 9}, 3, WritePacked           },
@@ -216,21 +174,69 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
         {"NV21",  VideoInfo::CS_YV12,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 2, WriteNV420            },
         {"Y8",    VideoInfo::CS_Y8,    {PLANAR_Y,        0,        0, 0}, 1, WritePlanar           },
         {"GRAY",  VideoInfo::CS_Y8,    {PLANAR_Y,        0,        0, 0}, 1, WritePlanar           },
-        {pix_type, VideoInfo::CS_UNKNOWN, NULL}
+        { pix_type, VideoInfo::CS_UNKNOWN, {0, 0, 0, 0}, 0, nullptr }
     };
     int i = 0;
     while (stricmp(pix_type, pixelformats[i].fmt_name))
         i++;
-    if (pixelformats[i].avs_pix_type == VideoInfo::CS_UNKNOWN) {
-        env->ThrowError("Invalid pixel type. Supported: RGB, RGBA, BGR, BGRA, ARGB,"
-                        " ABGR, YV24, I444, YUY2, YUYV, UYVY, YVYU, VYUY, YV16, I422,"
-                        " YV411, Y41B, I411, YV12, I420, IYUV, NV12, NV21, Y8, GRAY");
-    }
+    validate(pixelformats[i].avs_pix_type == VideoInfo::CS_UNKNOWN,
+             "Invalid pixel type. Supported: RGB, RGBA, BGR, BGRA, ARGB,"
+             " ABGR, YV24, I444, YUY2, YUYV, UYVY, YVYU, VYUY, YV16, I422,"
+             " YV411, Y41B, I411, YV12, I420, IYUV, NV12, NV21, Y8, GRAY");
 
     vi.pixel_type = pixelformats[i].avs_pix_type;
-    memcpy(order, pixelformats[i].order, sizeof(pixelformats[i].order));
+    memcpy(order, pixelformats[i].order, sizeof(int) * 4);
     col_count = pixelformats[i].cnt;
     WriteDestFrame = pixelformats[i].func;
+}
+
+
+RawSource::RawSource (const char *sourcefile, const int a_width, const int a_height,
+                      const char *a_pix_type, const int a_fpsnum, const int a_fpsden,
+                      const char *a_index, const bool a_show, ise_t *env)
+{
+    if ((fileHandle = _open(sourcefile, _O_BINARY | _O_RDONLY)) == -1)
+        env->ThrowError("Cannot open videofile.");
+
+    if ((fileSize = _filelengthi64(fileHandle)) == -1L)
+        env->ThrowError("Cannot get videofile length.");
+
+    ZeroMemory(&vi, sizeof(VideoInfo));
+    vi.width = a_width;
+    vi.height = a_height;
+    vi.fps_numerator = a_fpsnum;
+    vi.fps_denominator = a_fpsden;
+    vi.SetFieldBased(false);
+
+    char pix_type[16] = {};
+    strcpy(pix_type, a_pix_type);
+
+    level = 0;
+    show = a_show;
+
+    int64_t header_offset = 0;
+    int64_t frame_offset = 0;
+
+    if (strlen(a_index) == 0) {    //use header if valid else width, height, pixel_type from AVS are used
+        std::vector<char> read_buff(256, 0);
+        char* data = read_buff.data();
+        _read(fileHandle, data, read_buff.size());    //read some bytes and test on header
+        bool ret = parse_y4m(read_buff, vi, header_offset, frame_offset);
+
+        if (vi.width > MAX_WIDTH || vi.height > MAX_HEIGHT) {
+            const char* msg = "Resolution too big(%d x %d)."
+                              " Maximum acceptable resolution is %u x %u.";
+            sprintf(data, msg, vi.width, vi.height, MAX_WIDTH, MAX_HEIGHT);
+            throw std::runtime_error(data);
+        }
+
+        if (ret) {
+            strcpy(pix_type, data);
+        }
+    }
+
+    setProcess(pix_type);
+
 
     int framesize = (vi.width * vi.height * vi.BitsPerPixel()) >> 3;
 
