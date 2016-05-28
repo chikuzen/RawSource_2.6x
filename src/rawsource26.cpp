@@ -107,11 +107,6 @@ class RawSource : public IClip {
     bool show;
 
     std::vector<uint8_t> rawbuf;
-
-    struct i_struct {
-        int64_t index;
-        char type; //Key, Delta, Bigdelta
-    };
     std::vector<i_struct> index;
 
     void setProcess(const char* pix_type);
@@ -241,68 +236,11 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
     rawbuf.resize(vi.IsPlanar() ? vi.width * vi.height : framesize);
 
     //index build using string descriptor
-
     std::vector<rindex> rawindex;
     set_rawindex(rawindex, a_index, header_offset, frame_offset, framesize);
 
-//fill up missing bytepos (create full index)
-    int frame = 0;          //framenumber
-    int p_ri = 0;           //pointer to raw index
-    int delta = framesize;  //delta between 1 frame
-    int big_delta = 0;      //delta between many e.g. 25 frames
-    int big_steps = 0;      //how many big deltas have occured
-    int big_frame_step = 0; //how many frames is big_delta for?
-    int rimax = rawindex.size() - 1;
-
-    //rawindex[1].bytepos - rawindex[0].bytepos;    //current bytepos delta
-    int64_t bytepos = rawindex[0].bytepos;
-    index[frame].type = 'K';
-    while ((frame < maxframe) && ((bytepos + framesize) <= fileSize)) {    //next frame must be readable
-        index[frame].index = bytepos;
-
-        if ((p_ri < rimax) && (rawindex[p_ri].number <= frame)) {
-            p_ri++;
-            big_steps = 1;
-        }
-        frame++;
-
-        if ((p_ri > 0) && (rawindex[p_ri - 1].number + big_steps * big_frame_step == frame)) {
-            bytepos = rawindex[p_ri - 1].bytepos + big_delta * big_steps;
-            big_steps++;
-            index[frame].type = 'B';
-        } else {
-            if (rawindex[p_ri].number == frame) {
-                bytepos = rawindex[p_ri].bytepos;    //sync if framenumber is given in raw index
-                index[frame].type = 'K';
-            } else {
-                bytepos = bytepos + delta;
-                index[frame].type = 'D';
-            }
-        }
-
-//check for new delta and big_delta
-        if ((p_ri > 0) && (rawindex[p_ri].number == rawindex[p_ri-1].number + 1)) {
-            delta = (int)(rawindex[p_ri].bytepos - rawindex[p_ri - 1].bytepos);
-        } else if (p_ri > 1) {
-//if more than 1 frame difference and
-//2 successive equal distances then remember as big_delta
-//if second delta < first delta then reset
-            if (rawindex[p_ri].number - rawindex[p_ri - 1].number == rawindex[p_ri - 1].number - rawindex[p_ri - 2].number) {
-                big_frame_step = rawindex[p_ri].number - rawindex[p_ri - 1].number;
-                big_delta = (int)(rawindex[p_ri].bytepos - rawindex[p_ri - 1].bytepos);
-            } else {
-                if ((rawindex[p_ri].number - rawindex[p_ri - 1].number) < (rawindex[p_ri - 1].number - rawindex[p_ri - 2].number)) {
-                    big_delta = 0;
-                    big_frame_step = 0;
-                }
-                if (frame >= rawindex[p_ri].number) {
-                    big_delta = 0;
-                    big_frame_step = 0;
-                }
-            }
-        }
-    }
-    vi.num_frames = frame;
+    //create full index and get number of frames.
+    vi.num_frames = generate_index(index, rawindex, framesize, fileSize);
 }
 
 

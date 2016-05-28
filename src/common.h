@@ -29,13 +29,23 @@ struct rindex {
     rindex(int x, int64_t y) : number(x), bytepos(y) {}
 };
 
-void set_rawindex(std::vector<rindex>& r, const char* index,
-                  int64_t header_offset, int64_t frame_offset,
-                  size_t framesize);
+struct i_struct {
+    int64_t index;
+    char type; //Key, Delta, Bigdelta
+};
 
 
 bool parse_y4m(std::vector<char>& header, VideoInfo& vi,
                int64_t& header_offset, int64_t& frame_offset);
+
+void set_rawindex(std::vector<rindex>& r, const char* index,
+                  int64_t header_offset, int64_t frame_offset,
+                  size_t framesize);
+
+int generate_index(std::vector<i_struct>& index, std::vector<rindex>& rawindex,
+                   size_t framesize, int64_t filesize);
+
+
 
 
 static inline void validate(bool cond, const char* msg)
