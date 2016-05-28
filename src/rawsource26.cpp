@@ -8,24 +8,14 @@
 */
 
 #include <io.h>
-#include <stdio.h>
 #include <fcntl.h>
-#include <windows.h>
-#include "avisynth.h"
+#include <cstdio>
+#include <cstdint>
+#include "common.h"
 
-#pragma warning(disable:4996)
 #define MAX_PIXTYPE_LEN 32
 #define MAX_Y4M_HEADER 128
-#define MIN_RESOLUTION 8
-#define MAX_WIDTH 65536
-#define MAX_HEIGHT 65536
 
-#define Y4M_STREAM_MAGIC "YUV4MPEG2"
-#define Y4M_STREAM_MAGIC_LEN 9
-#define Y4M_FRAME_MAGIC "FRAME"
-#define Y4M_FRAME_MAGIC_LEN 5
-
-static const AVS_Linkage* AVS_linkage = 0;
 
 typedef void (*FuncWriteDestFrame)(int fd, PVideoFrame& dst, BYTE* buff, int* order, int count, IScriptEnvironment* env);
 
@@ -114,9 +104,6 @@ class RawSource : public IClip {
     VideoInfo vi;
     int h_rawfile;
     __int64 filelen;
-    __int64 headeroffset;
-    int y4m_headerlen;
-    char y4m_headerbuf[MAX_Y4M_HEADER];
     char pix_type[MAX_PIXTYPE_LEN];
     int order[4];
     int col_count;
@@ -137,7 +124,6 @@ class RawSource : public IClip {
     ri_struct * rawindex;
     i_struct * index;
 
-    int ParseHeader();
     FuncWriteDestFrame WriteDestFrame;
 
 public:
@@ -174,24 +160,24 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
     level = 0;
     show = a_show;
 
-    y4m_headerlen = 0;
-    headeroffset = 0;
+    int64_t header_offset = 0;
+    int64_t frame_offset = 0;
 
-    if (!strcmp(a_index, "")) {    //use header if valid else width, height, pixel_type from AVS are used
-        ret = _read(h_rawfile, y4m_headerbuf, MAX_Y4M_HEADER);    //read some bytes and test on header
-        ret = ParseHeader();
-        if (vi.width > MAX_WIDTH)
-            env->ThrowError("Width too big(%d). Maximum acceptable width is %d.", vi.width, MAX_WIDTH);
-        if (vi.height > MAX_HEIGHT)
-            env->ThrowError("Height too big(%d). Maximum acceptable height is %d.", vi.height, MAX_HEIGHT);
-        switch (ret) {
-        case -1:
-            env->ThrowError("YUV4MPEG2 header error.");
-            break;
-        case -2:
-            env->ThrowError("This file's YUV4MPEG2 HEADER is unsupported.");
-        default:
-            break;
+    if (strlen(a_index) == 0) {    //use header if valid else width, height, pixel_type from AVS are used
+        std::vector<char> read_buff(256, 0);
+        char* data = read_buff.data();
+        _read(h_rawfile, data, read_buff.size());    //read some bytes and test on header
+        bool ret = parse_y4m(read_buff, vi, header_offset, frame_offset);
+
+        if (vi.width > MAX_WIDTH || vi.height > MAX_HEIGHT) {
+            const char* msg = "Resolution too big(%d x %d)."
+                              " Maximum acceptable resolution is %u x %u.";
+            sprintf(data, msg, vi.width, vi.height, MAX_WIDTH, MAX_HEIGHT);
+            throw std::runtime_error(data);
+        }
+
+        if (ret) {
+            strcpy(pix_type, data);
         }
     }
 
@@ -276,9 +262,9 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
 //read all framenr:bytepos pairs
     if (!strcmp(a_index, "")) {
         rawindex[0].framenr = 0;
-        rawindex[0].bytepos = headeroffset;
+        rawindex[0].bytepos = header_offset;
         rawindex[1].framenr = 1;
-        rawindex[1].bytepos = headeroffset + y4m_headerlen + framesize;
+        rawindex[1].bytepos = header_offset + frame_offset + framesize;
         rimax = 1;
     } else {
         const char * pos = strchr(a_index, '.');
@@ -410,125 +396,56 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, IScriptEnvironment* env)
     return dst;
 }
 
-int RawSource::ParseHeader()
-{
-    if (strncmp(y4m_headerbuf, Y4M_STREAM_MAGIC, Y4M_STREAM_MAGIC_LEN))
-        return 0;
-
-    vi.height = 0;
-    vi.width = 0;
-    strcpy(pix_type, "i420");
-
-    unsigned int numerator = 0;
-    unsigned int denominator = 0;
-    char ctag[9] = {0};
-    int i;
-    for (i = Y4M_STREAM_MAGIC_LEN; (i < MAX_Y4M_HEADER) && (y4m_headerbuf[i] != '\n'); i++) {
-        if (!strncmp(y4m_headerbuf + i, " W", 2)) {
-            i += 2;
-            sscanf(y4m_headerbuf + i, "%d", &vi.width);
-        }
-
-        if (!strncmp(y4m_headerbuf + i, " H", 2)) {
-            i += 2;
-            sscanf(y4m_headerbuf + i, "%d", &vi.height);
-        }
-
-        if (!strncmp(y4m_headerbuf + i, " I", 2)) {
-            i += 2;
-            if (y4m_headerbuf[i] == 'm')
-                return -2;
-            else if (y4m_headerbuf[i] == 't')
-                vi.image_type = VideoInfo::IT_TFF;
-            else if (y4m_headerbuf[i] == 'b')
-                vi.image_type = VideoInfo::IT_BFF;
-        }
-
-        if (!strncmp(y4m_headerbuf + i, " F", 2)) {
-            i += 2;
-            sscanf(y4m_headerbuf + i, "%u:%u", &numerator, &denominator);
-            if (numerator && denominator)
-                vi.SetFPS(numerator, denominator);
-            else
-                return -1;
-        }
-
-        if (!strncmp(y4m_headerbuf + i, " C", 2)) {
-            i += 2;
-            sscanf(y4m_headerbuf + i, "%s", ctag);
-            if (!strncmp(ctag, "444alpha", 8)) {
-                strcpy(pix_type, "AYUV");
-            } else if (!strncmp(ctag, "444", 3)) {
-                strcpy(pix_type, "I444");
-            } else if (!strncmp(ctag, "422", 3)) {
-                strcpy(pix_type, "I422");
-            } else if (!strncmp(ctag, "411", 3)) {
-                strcpy(pix_type, "I411");
-            } else if (!strncmp(ctag, "420", 3)) {
-                strcpy(pix_type, "I420");
-            } else if (!strncmp(ctag, "mono", 4)) {
-                strcpy(pix_type, "GRAY");
-            } else {
-                return -1;
-            }
-        }
-    }
-
-    if (!numerator || !denominator || !vi.width || !vi.height) {
-        return -1;
-    }
-
-    i++;
-
-    if (strncmp(y4m_headerbuf + i, Y4M_FRAME_MAGIC, Y4M_FRAME_MAGIC_LEN)) {
-        return -1;
-    }
-
-    headeroffset = i;
-
-    i += Y4M_FRAME_MAGIC_LEN;
-
-    while ((i < 128) && (y4m_headerbuf[i] != '\n'))
-        i++;
-
-    y4m_headerlen = i - (int)headeroffset + 1;
-    headeroffset = headeroffset + y4m_headerlen;
-
-    return 0;
-}
 
 bool __stdcall RawSource::GetParity(int n)
 {
     return vi.image_type == VideoInfo::IT_TFF;
 }
 
+
+
 AVSValue __cdecl CreateRawSource(AVSValue args, void* user_data, IScriptEnvironment* env)
 {
-    if (!args[0].Defined())
-        env->ThrowError("RawSource: No source specified");
+    char buff[128] = {};
 
-    const char *source = args[0].AsString();
-    const int width = args[1].AsInt(720);
-    const int height = args[2].AsInt(576);
-    const char *pix_type = args[3].AsString("YUY2");
-    const int fpsnum = args[4].AsInt(25);
-    const int fpsden = args[5].AsInt(1);
-    const char *index = args[6].AsString("");
-    const bool show = args[7].AsBool(false);
+    try {
+        validate(!args[0].Defined(), "No source specified");
 
-    if (width < MIN_RESOLUTION || height < MIN_RESOLUTION)
-        env->ThrowError("RawSource: width and height need to be %d or higher.", MIN_RESOLUTION);
-    if (width > MAX_WIDTH)
-        env->ThrowError("RawSource: width needs to be %d or lower.", MAX_WIDTH);
-    if (height > MAX_HEIGHT)
-        env->ThrowError("RawSource: height needs to be %d or lower.", MAX_HEIGHT);
-    if (strlen(pix_type) > MAX_PIXTYPE_LEN - 1)
-        env->ThrowError("RawSource: pixel_type needs to be %d chars or shorter.", MAX_PIXTYPE_LEN - 1);
-    if (fpsnum < 1 || fpsden < 1)
-        env->ThrowError("RawSource: fpsnum and fpsden need to be 1 or higher.");
+        const char *source = args[0].AsString();
+        const int width = args[1].AsInt(720);
+        const int height = args[2].AsInt(576);
+        const char *pix_type = args[3].AsString("YUY2");
+        const int fpsnum = args[4].AsInt(25);
+        const int fpsden = args[5].AsInt(1);
+        const char *index = args[6].AsString("");
+        const bool show = args[7].AsBool(false);
 
-    return new RawSource(source, width, height, pix_type, fpsnum, fpsden, index, show, env);
+        if (width < MIN_WIDTH || height < MIN_HEIGHT) {
+            sprintf(buff, "width and height need to be %u x %u or lower.",
+                    MIN_WIDTH, MIN_HEIGHT);
+            throw std::runtime_error(buff);
+        }
+        if (width >= MAX_WIDTH || height >= MAX_HEIGHT) {
+            sprintf(buff, "width and height need to be lower than %u x %u.",
+                    MAX_WIDTH, MAX_HEIGHT);
+            throw std::runtime_error(buff);
+        }
+        validate(strlen(pix_type) > 15, "pixel_type is too long.");
+        validate(fpsnum < 1 || fpsden < 1,
+                 "fpsnum and fpsden need to be 1 or higher.");
+
+        return new RawSource(source, width, height, pix_type, fpsnum, fpsden,
+                             index, show, env);
+
+    } catch (std::runtime_error& e) {
+        env->ThrowError("RawSource: %s", e.what());
+    }
+    return 0;
 }
+
+
+const AVS_Linkage* AVS_linkage = nullptr;
+
 
 extern "C" __declspec(dllexport) const char* __stdcall
 AvisynthPluginInit3(IScriptEnvironment* env, const AVS_Linkage* const vectors)
