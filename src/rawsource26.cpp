@@ -454,5 +454,11 @@ AvisynthPluginInit3(ise_t* env, const AVS_Linkage* const vectors)
     env->AddFunction("RawSource",
                      "[file]s[width]i[height]i[pixel_type]s[fpsnum]i[fpsden]i[index]s[show]b",
                      CreateRawSource, 0);
-  return "RawSource for AviSynth2.6x";
+
+    if (env->FunctionExists("SetFilterMTMode")) {
+        static_cast<IScriptEnvironment2*>(
+            env)->SetFilterMTMode("RawSource", MT_SERIALIZED, true);
+    }
+
+    return "RawSource for AviSynth2.6x/Avisynth+.";
 }
