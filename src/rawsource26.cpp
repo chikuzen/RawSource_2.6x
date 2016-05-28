@@ -17,13 +17,13 @@
 #define MAX_Y4M_HEADER 128
 
 
-typedef void (*FuncWriteDestFrame)(int fd, PVideoFrame& dst, BYTE* buff, int* order, int count, IScriptEnvironment* env);
+typedef void (*FuncWriteDestFrame)(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, IScriptEnvironment* env);
 
-static void WriteNV420(int fd, PVideoFrame& dst, BYTE* buff, int* order, int count, IScriptEnvironment* env)
+static void WriteNV420(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, IScriptEnvironment* env)
 {
     int width = dst->GetRowSize(PLANAR_Y);
     int height = dst->GetHeight(PLANAR_Y);
-    BYTE* dstp = dst->GetWritePtr(PLANAR_Y);
+    uint8_t* dstp = dst->GetWritePtr(PLANAR_Y);
     int pitch = dst->GetPitch(PLANAR_Y);
     int read_size = width * height;
 
@@ -36,7 +36,7 @@ static void WriteNV420(int fd, PVideoFrame& dst, BYTE* buff, int* order, int cou
     height >>= 1;
     dstp = dst->GetWritePtr(order[1]);
     pitch = dst->GetPitch(order[1]);
-    BYTE* dstp2 = dst->GetWritePtr(order[2]);
+    uint8_t* dstp2 = dst->GetWritePtr(order[2]);
     
     ZeroMemory(buff, read_size);
     _read(fd, buff, read_size);
@@ -51,13 +51,13 @@ static void WriteNV420(int fd, PVideoFrame& dst, BYTE* buff, int* order, int cou
     }
 }
 
-static void WritePlanar(int fd, PVideoFrame& dst, BYTE* buff, int* order, int count, IScriptEnvironment* env)
+static void WritePlanar(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, IScriptEnvironment* env)
 {
     for (int i = 0; i < count; i++) {
         int debug = order[i];
         int width = dst->GetRowSize(order[i]);
         int height = dst->GetHeight(order[i]);
-        BYTE* dstp = dst->GetWritePtr(order[i]);
+        uint8_t* dstp = dst->GetWritePtr(order[i]);
         int pitch = dst->GetPitch(order[i]);
         int read_size = width * height;
         ZeroMemory(buff, read_size);
@@ -66,11 +66,11 @@ static void WritePlanar(int fd, PVideoFrame& dst, BYTE* buff, int* order, int co
     }
 }
 
-static void WritePacked(int fd, PVideoFrame& dst, BYTE* buff, int* order, int count, IScriptEnvironment* env)
+static void WritePacked(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, IScriptEnvironment* env)
 {
     int width = dst->GetRowSize();
     int height = dst->GetHeight();
-    BYTE* dstp = dst->GetWritePtr();
+    uint8_t* dstp = dst->GetWritePtr();
     int pitch = dst->GetPitch();
     int read_size = width * height;
     ZeroMemory(buff, read_size);
@@ -78,11 +78,11 @@ static void WritePacked(int fd, PVideoFrame& dst, BYTE* buff, int* order, int co
     env->BitBlt(dstp, pitch, buff, width, width, height);
 }
 
-static void WritePackedWithReorder(int fd, PVideoFrame& dst, BYTE* buff, int* order, int count, IScriptEnvironment* env)
+static void WritePackedWithReorder(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, IScriptEnvironment* env)
 {
     int width = dst->GetRowSize();
     int height = dst->GetHeight();
-    BYTE* dstp = dst->GetWritePtr();
+    uint8_t* dstp = dst->GetWritePtr();
     int pitch = dst->GetPitch();
     int read_size = width * height;
     ZeroMemory(buff, width * height);
@@ -102,22 +102,22 @@ static void WritePackedWithReorder(int fd, PVideoFrame& dst, BYTE* buff, int* or
 class RawSource : public IClip {
 
     VideoInfo vi;
-    int h_rawfile;
-    __int64 filelen;
+    int fileHandle;
+    int64_t fileSize;
     char pix_type[MAX_PIXTYPE_LEN];
     int order[4];
     int col_count;
     int ret;
     int level;
     bool show;
-    BYTE *rawbuf;
+    uint8_t *rawbuf;
 
     struct ri_struct {
         int framenr;
-        __int64 bytepos;
+        int64_t bytepos;
     };
     struct i_struct {
-        __int64 index;
+        int64_t index;
         char type; //Key, Delta, Bigdelta
     };
 
@@ -133,7 +133,7 @@ public:
     virtual ~RawSource();
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment *env);
     bool __stdcall GetParity(int n);
-    void __stdcall GetAudio(void *buf, __int64 start, __int64 count, IScriptEnvironment* env) {}
+    void __stdcall GetAudio(void *buf, int64_t start, int64_t count, IScriptEnvironment* env) {}
     const VideoInfo& __stdcall GetVideoInfo() {return vi;}
     int __stdcall SetCacheHints(int cachehints,int frame_range) { return 0; }
 };
@@ -142,10 +142,10 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
                       const char *a_pix_type, const int a_fpsnum, const int a_fpsden,
                       const char *a_index, const bool a_show, IScriptEnvironment *env)
 {
-    if ((h_rawfile = _open(sourcefile, _O_BINARY | _O_RDONLY)) == -1)
+    if ((fileHandle = _open(sourcefile, _O_BINARY | _O_RDONLY)) == -1)
         env->ThrowError("Cannot open videofile.");
 
-    if ((filelen = _filelengthi64(h_rawfile)) == -1L)
+    if ((fileSize = _filelengthi64(fileHandle)) == -1L)
         env->ThrowError("Cannot get videofile length.");
 
     ZeroMemory(&vi, sizeof(VideoInfo));
@@ -166,7 +166,7 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
     if (strlen(a_index) == 0) {    //use header if valid else width, height, pixel_type from AVS are used
         std::vector<char> read_buff(256, 0);
         char* data = read_buff.data();
-        _read(h_rawfile, data, read_buff.size());    //read some bytes and test on header
+        _read(fileHandle, data, read_buff.size());    //read some bytes and test on header
         bool ret = parse_y4m(read_buff, vi, header_offset, frame_offset);
 
         if (vi.width > MAX_WIDTH || vi.height > MAX_HEIGHT) {
@@ -234,7 +234,7 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
 
     int framesize = (vi.width * vi.height * vi.BitsPerPixel()) >> 3;
 
-    int maxframe = (int)(filelen / (__int64)framesize);    //1 = one frame
+    int maxframe = (int)(fileSize / (int64_t)framesize);    //1 = one frame
 
     if (maxframe < 1)
         env->ThrowError("File too small for even one frame.");
@@ -249,7 +249,7 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
     char seps[] = " \n";
     char * token;
     int frame;
-    __int64 bytepos;
+    int64_t bytepos;
     int p_ri = 0;
     int rimax;
     char * p_del;
@@ -317,7 +317,7 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
     //rawindex[1].bytepos - rawindex[0].bytepos;    //current bytepos delta
     bytepos = rawindex[0].bytepos;
     index[frame].type = 'K';
-    while ((frame < maxframe) && ((bytepos + framesize) <= filelen)) {    //next frame must be readable
+    while ((frame < maxframe) && ((bytepos + framesize) <= fileSize)) {    //next frame must be readable
         index[frame].index = bytepos;
 
         if ((p_ri < rimax) && (rawindex[p_ri].framenr <= frame)) {
@@ -368,7 +368,7 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
 
 
 RawSource::~RawSource() {
-    _close(h_rawfile);
+    _close(fileHandle);
     delete [] rawbuf;
     delete [] index;
     delete [] rawindex;
@@ -389,10 +389,10 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, IScriptEnvironment* env)
     }
 
     PVideoFrame dst = env->NewVideoFrame(vi);
-    if ((ret = (int)_lseeki64(h_rawfile, index[n].index, SEEK_SET)) == -1L) {
+    if ((ret = (int)_lseeki64(fileHandle, index[n].index, SEEK_SET)) == -1L) {
         return dst;    //error. do nothing
     }
-    WriteDestFrame(h_rawfile, dst, rawbuf, order, col_count, env);
+    WriteDestFrame(fileHandle, dst, rawbuf, order, col_count, env);
     return dst;
 }
 
