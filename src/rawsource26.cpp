@@ -10,91 +10,10 @@
 #include <io.h>
 #include <fcntl.h>
 #include <cstdint>
+#include <malloc.h>
 #include "common.h"
 
 
-
-typedef void (*FuncWriteDestFrame)(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, ise_t* env);
-
-static void WriteNV420(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, ise_t* env)
-{
-    int width = dst->GetRowSize(PLANAR_Y);
-    int height = dst->GetHeight(PLANAR_Y);
-    uint8_t* dstp = dst->GetWritePtr(PLANAR_Y);
-    int pitch = dst->GetPitch(PLANAR_Y);
-    int read_size = width * height;
-
-    ZeroMemory(buff, read_size);
-    _read(fd, buff, read_size);
-    env->BitBlt(dstp, pitch, buff, width, width, height);
-
-    read_size >>= 1;
-    width >>= 1;
-    height >>= 1;
-    dstp = dst->GetWritePtr(order[1]);
-    pitch = dst->GetPitch(order[1]);
-    uint8_t* dstp2 = dst->GetWritePtr(order[2]);
-    
-    ZeroMemory(buff, read_size);
-    _read(fd, buff, read_size);
-    for (int i = 0; i < height; i++) {
-        for (int j = 0; j < width; j++) {
-            dstp[j]  = buff[j << 1];
-            dstp2[j] = buff[(j << 1) + 1];
-        }
-        buff += width;
-        dstp += pitch;
-        dstp2 += pitch;
-    }
-}
-
-static void WritePlanar(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, ise_t* env)
-{
-    for (int i = 0; i < count; i++) {
-        int debug = order[i];
-        int width = dst->GetRowSize(order[i]);
-        int height = dst->GetHeight(order[i]);
-        uint8_t* dstp = dst->GetWritePtr(order[i]);
-        int pitch = dst->GetPitch(order[i]);
-        int read_size = width * height;
-        ZeroMemory(buff, read_size);
-        _read(fd, buff, read_size);
-        env->BitBlt(dstp, pitch, buff, width, width, height);
-    }
-}
-
-static void WritePacked(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, ise_t* env)
-{
-    int width = dst->GetRowSize();
-    int height = dst->GetHeight();
-    uint8_t* dstp = dst->GetWritePtr();
-    int pitch = dst->GetPitch();
-    int read_size = width * height;
-    ZeroMemory(buff, read_size);
-    _read(fd, buff, read_size);
-    env->BitBlt(dstp, pitch, buff, width, width, height);
-}
-
-static void WritePackedWithReorder(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, ise_t* env)
-{
-    int width = dst->GetRowSize();
-    int height = dst->GetHeight();
-    uint8_t* dstp = dst->GetWritePtr();
-    int pitch = dst->GetPitch();
-    int read_size = width * height;
-    ZeroMemory(buff, width * height);
-    _read(fd, buff, read_size);
-
-    for (int i = 0; i < height; i++) {
-        for (int j = 0, time = width / count; j < time; j++) {
-            for (int k = 0; k < count; k++) {
-                dstp[j * count + k] = buff[j * count + order[k]];
-            }
-        }
-        buff += width;
-        dstp += pitch;
-    }
-}
 
 class RawSource : public IClip {
 
@@ -106,11 +25,14 @@ class RawSource : public IClip {
     int level;
     bool show;
 
-    std::vector<uint8_t> rawbuf;
+    uint8_t* rawbuf;
     std::vector<i_struct> index;
 
     void setProcess(const char* pix_type);
-    FuncWriteDestFrame WriteDestFrame;
+
+    void(__stdcall *writeDestFrame)(
+        int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
+        ise_t* env);
 
 public:
     RawSource(const char* source, const int width, const int height,
@@ -118,7 +40,7 @@ public:
               const char* index, const bool show);
     PVideoFrame __stdcall GetFrame(int n, ise_t *env);
 
-    ~RawSource() { _close(fileHandle); }
+    ~RawSource() { _close(fileHandle); _aligned_free(rawbuf); }
     bool __stdcall GetParity(int n) { return vi.image_type == VideoInfo::IT_TFF; }
     void __stdcall GetAudio(void *buf, int64_t start, int64_t count, ise_t* env) {}
     const VideoInfo& __stdcall GetVideoInfo() { return vi; }
@@ -128,41 +50,44 @@ public:
 
 void RawSource::setProcess(const char* pix_type)
 {
+    typedef void (__stdcall *write_frame_t)(
+        int, PVideoFrame&, uint8_t*, int*, int, ise_t*);
+
     const struct {
         const char *fmt_name;
         const int avs_pix_type;
         const int order[4];
         const int cnt;
-        FuncWriteDestFrame func;
+        write_frame_t func;
     } pixelformats[] = {
-        {"BGR",   VideoInfo::CS_BGR24, {       0,        1,        2, 9}, 3, WritePacked           },
-        {"BGR24", VideoInfo::CS_BGR24, {       0,        1,        2, 9}, 3, WritePacked           },
-        {"RGB",   VideoInfo::CS_BGR24, {       2,        1,        0, 9}, 3, WritePackedWithReorder},
-        {"RGB24", VideoInfo::CS_BGR24, {       2,        1,        0, 9}, 3, WritePackedWithReorder},
-        {"BGRA",  VideoInfo::CS_BGR32, {       0,        1,        2, 3}, 4, WritePacked           },
-        {"BGR32", VideoInfo::CS_BGR32, {       0,        1,        2, 3}, 4, WritePacked           },
-        {"RGBA",  VideoInfo::CS_BGR32, {       2,        1,        0, 3}, 4, WritePackedWithReorder},
-        {"RGB32", VideoInfo::CS_BGR32, {       2,        1,        0, 3}, 4, WritePackedWithReorder},
-        {"ARGB",  VideoInfo::CS_BGR32, {       3,        2,        1, 0}, 4, WritePackedWithReorder},
-        {"ABGR",  VideoInfo::CS_BGR32, {       3,        0,        1, 2}, 4, WritePackedWithReorder},
-        {"YUY2",  VideoInfo::CS_YUY2,  {       0,        1,        2, 3}, 4, WritePacked           },
-        {"YUYV",  VideoInfo::CS_YUY2,  {       0,        1,        2, 3}, 4, WritePacked           },
-        {"UYVY",  VideoInfo::CS_YUY2,  {       1,        0,        3, 2}, 4, WritePackedWithReorder},
-        {"VYUY",  VideoInfo::CS_YUY2,  {       3,        0,        1, 2}, 4, WritePackedWithReorder},
-        {"YV24",  VideoInfo::CS_YV24,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, WritePlanar           },
-        {"I444",  VideoInfo::CS_YV24,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, WritePlanar           },
-        {"YV16",  VideoInfo::CS_YV16,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, WritePlanar           },
-        {"I422",  VideoInfo::CS_YV16,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, WritePlanar           },
-        {"YV411", VideoInfo::CS_YV411, {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, WritePlanar           },
-        {"Y41B",  VideoInfo::CS_YV411, {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, WritePlanar           },
-        {"I411",  VideoInfo::CS_YV411, {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, WritePlanar           },
-        {"I420",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, WritePlanar           },
-        {"IYUV",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, WritePlanar           },
-        {"YV12",  VideoInfo::CS_YV12,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, WritePlanar           },
-        {"NV12",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 2, WriteNV420            },
-        {"NV21",  VideoInfo::CS_YV12,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 2, WriteNV420            },
-        {"Y8",    VideoInfo::CS_Y8,    {PLANAR_Y,        0,        0, 0}, 1, WritePlanar           },
-        {"GRAY",  VideoInfo::CS_Y8,    {PLANAR_Y,        0,        0, 0}, 1, WritePlanar           },
+        {"BGR",   VideoInfo::CS_BGR24, {       0,        1,        2, 9}, 3, write_packed        },
+        {"BGR24", VideoInfo::CS_BGR24, {       0,        1,        2, 9}, 3, write_packed        },
+        {"RGB",   VideoInfo::CS_BGR24, {       2,        1,        0, 9}, 3, write_packed_reorder},
+        {"RGB24", VideoInfo::CS_BGR24, {       2,        1,        0, 9}, 3, write_packed_reorder},
+        {"BGRA",  VideoInfo::CS_BGR32, {       0,        1,        2, 3}, 4, write_packed        },
+        {"BGR32", VideoInfo::CS_BGR32, {       0,        1,        2, 3}, 4, write_packed        },
+        {"RGBA",  VideoInfo::CS_BGR32, {       2,        1,        0, 3}, 4, write_packed_reorder},
+        {"RGB32", VideoInfo::CS_BGR32, {       2,        1,        0, 3}, 4, write_packed_reorder},
+        {"ARGB",  VideoInfo::CS_BGR32, {       3,        2,        1, 0}, 4, write_packed_reorder},
+        {"ABGR",  VideoInfo::CS_BGR32, {       3,        0,        1, 2}, 4, write_packed_reorder},
+        {"YUY2",  VideoInfo::CS_YUY2,  {       0,        1,        2, 3}, 4, write_packed        },
+        {"YUYV",  VideoInfo::CS_YUY2,  {       0,        1,        2, 3}, 4, write_packed        },
+        {"UYVY",  VideoInfo::CS_YUY2,  {       1,        0,        3, 2}, 4, write_packed_reorder},
+        {"VYUY",  VideoInfo::CS_YUY2,  {       3,        0,        1, 2}, 4, write_packed_reorder},
+        {"YV24",  VideoInfo::CS_YV24,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, write_planar        },
+        {"I444",  VideoInfo::CS_YV24,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, write_planar        },
+        {"YV16",  VideoInfo::CS_YV16,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, write_planar        },
+        {"I422",  VideoInfo::CS_YV16,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, write_planar        },
+        {"YV411", VideoInfo::CS_YV411, {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, write_planar        },
+        {"Y41B",  VideoInfo::CS_YV411, {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, write_planar        },
+        {"I411",  VideoInfo::CS_YV411, {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, write_planar        },
+        {"I420",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, write_planar        },
+        {"IYUV",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, write_planar        },
+        {"YV12",  VideoInfo::CS_YV12,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, write_planar        },
+        {"NV12",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 2, write_NV420         },
+        {"NV21",  VideoInfo::CS_YV12,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 2, write_NV420         },
+        {"Y8",    VideoInfo::CS_Y8,    {PLANAR_Y,        0,        0, 0}, 1, write_planar        },
+        {"GRAY",  VideoInfo::CS_Y8,    {PLANAR_Y,        0,        0, 0}, 1, write_planar        },
         { pix_type, VideoInfo::CS_UNKNOWN, {0, 0, 0, 0}, 0, nullptr }
     };
     int i = 0;
@@ -176,7 +101,7 @@ void RawSource::setProcess(const char* pix_type)
     vi.pixel_type = pixelformats[i].avs_pix_type;
     memcpy(order, pixelformats[i].order, sizeof(int) * 4);
     col_count = pixelformats[i].cnt;
-    WriteDestFrame = pixelformats[i].func;
+    writeDestFrame = pixelformats[i].func;
 }
 
 
@@ -233,7 +158,9 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
 
     index.resize(maxframe + 1);
 
-    rawbuf.resize(vi.IsPlanar() ? vi.width * vi.height : framesize);
+    rawbuf = reinterpret_cast<uint8_t*>(
+        _aligned_malloc(vi.IsPlanar() ? vi.width * vi.height : framesize, 16));
+    validate(rawbuf == nullptr, "failed to allocate read buffer.");
 
     //index build using string descriptor
     std::vector<rindex> rawindex;
@@ -264,7 +191,7 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
     if (_lseeki64(fileHandle, idx[n].index, SEEK_SET) == -1L) {
         return dst;    //error. do nothing
     }
-    WriteDestFrame(fileHandle, dst, rawbuf.data(), order, col_count, env);
+    writeDestFrame(fileHandle, dst, rawbuf, order, col_count, env);
     return dst;
 }
 

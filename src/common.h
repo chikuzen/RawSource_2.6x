@@ -45,8 +45,21 @@ void set_rawindex(std::vector<rindex>& r, const char* index,
 int generate_index(std::vector<i_struct>& index, std::vector<rindex>& rawindex,
                    size_t framesize, int64_t filesize);
 
+void __stdcall
+write_NV420(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
+            ise_t* env) noexcept;
 
+void __stdcall
+write_planar(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
+             ise_t* env) noexcept;
 
+void __stdcall
+write_packed(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
+             ise_t* env) noexcept;
+
+void __stdcall
+write_packed_reorder(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
+                     int count, ise_t* env) noexcept;
 
 static inline void validate(bool cond, const char* msg)
 {
