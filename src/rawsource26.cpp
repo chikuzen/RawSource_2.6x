@@ -10,7 +10,7 @@
 #include <io.h>
 #include <fcntl.h>
 #include <cstdio>
-#include <cstdint>
+#include <cinttypes>
 #include "common.h"
 
 
@@ -104,22 +104,16 @@ class RawSource : public IClip {
     int64_t fileSize;
     int order[4];
     int col_count;
-    int ret;
     int level;
     bool show;
-    uint8_t *rawbuf;
 
-    struct ri_struct {
-        int framenr;
-        int64_t bytepos;
-    };
+    std::vector<uint8_t> rawbuf;
+
     struct i_struct {
         int64_t index;
         char type; //Key, Delta, Bigdelta
     };
-
-    ri_struct * rawindex;
-    i_struct * index;
+    std::vector<i_struct> index;
 
     void setProcess(const char* pix_type);
     FuncWriteDestFrame WriteDestFrame;
@@ -195,17 +189,16 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
                       const char *a_pix_type, const int a_fpsnum, const int a_fpsden,
                       const char *a_index, const bool a_show, ise_t *env)
 {
-    if ((fileHandle = _open(sourcefile, _O_BINARY | _O_RDONLY)) == -1)
-        env->ThrowError("Cannot open videofile.");
+    fileHandle = _open(sourcefile, _O_BINARY | _O_RDONLY);
+    validate(fileHandle == -1, "Cannot open videofile.");
 
-    if ((fileSize = _filelengthi64(fileHandle)) == -1L)
-        env->ThrowError("Cannot get videofile length.");
+    fileSize = _filelengthi64(fileHandle);
+    validate(fileSize == -1L, "Cannot get videofile length.");
 
-    ZeroMemory(&vi, sizeof(VideoInfo));
+    memset(&vi, 0, sizeof(VideoInfo));
     vi.width = a_width;
     vi.height = a_height;
-    vi.fps_numerator = a_fpsnum;
-    vi.fps_denominator = a_fpsden;
+    vi.SetFPS(a_fpsnum, a_fpsden);
     vi.SetFieldBased(false);
 
     char pix_type[16] = {};
@@ -238,106 +231,94 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
     setProcess(pix_type);
 
 
-    int framesize = (vi.width * vi.height * vi.BitsPerPixel()) >> 3;
+    size_t framesize = vi.width * vi.height * vi.BitsPerPixel() / 8;
 
-    int maxframe = (int)(fileSize / (int64_t)framesize);    //1 = one frame
+    int maxframe = static_cast<int>(fileSize / framesize);    //1 = one frame
 
-    if (maxframe < 1)
-        env->ThrowError("File too small for even one frame.");
+    validate(maxframe < 1, "File too small for even one frame.");
 
-    index = new i_struct[maxframe + 1];
-    rawindex = new ri_struct[maxframe + 1];
-    rawbuf = new unsigned char[vi.IsPlanar() ? vi.width * vi.height: vi.width * vi.height * (vi.BitsPerPixel() >> 3)];
+    index.resize(maxframe + 1);
 
-//index build using string descriptor
-    char * indstr;
-    FILE * indexfile;
-    char seps[] = " \n";
-    char * token;
-    int frame;
-    int64_t bytepos;
-    int p_ri = 0;
-    int rimax;
-    char * p_del;
-    int num1, num2;
-    int delta;    //delta between 1 frame
-    int big_delta;    //delta between many e.g. 25 frames
-    int big_frame_step;    //how many frames is big_delta for?
-    int big_steps;    //how many big deltas have occured
+    rawbuf.resize(vi.IsPlanar() ? vi.width * vi.height : framesize);
 
-//read all framenr:bytepos pairs
+    //index build using string descriptor
+    struct rindex {
+        int number;
+        int64_t bytepos;
+        rindex(int x, int64_t y) : number(x), bytepos(y) {}
+    };
+
+    std::vector<rindex> rawindex;
+    rawindex.reserve(2);
+
     if (!strcmp(a_index, "")) {
-        rawindex[0].framenr = 0;
-        rawindex[0].bytepos = header_offset;
-        rawindex[1].framenr = 1;
-        rawindex[1].bytepos = header_offset + frame_offset + framesize;
-        rimax = 1;
+        rawindex.emplace_back(0, header_offset);
+        rawindex.emplace_back(1, header_offset + frame_offset + framesize);
     } else {
+        std::vector<char> read_buff;
         const char * pos = strchr(a_index, '.');
-        if (pos != NULL) {    //assume indexstring is a filename
-            indexfile = fopen(a_index, "r");
-            if (indexfile == 0)
-                env->ThrowError("Cannot open indexfile.");
+        if (pos != nullptr) { //assume indexstring is a filename
+            FILE* indexfile = fopen(a_index, "r");
+            validate(!indexfile, "Cannot open indexfile.");
             fseek(indexfile, 0, SEEK_END);
-            ret = ftell(indexfile);
-            indstr = new char[ret + 1];
+            read_buff.resize(ftell(indexfile) + 1, 0);
             fseek(indexfile, 0, SEEK_SET);
-            fread(indstr, 1, ret, indexfile);
+            fread(read_buff.data(), 1, read_buff.size() - 1, indexfile);
             fclose(indexfile);
         } else {
-            indstr = new char[strlen(a_index) + 1];
-            strcpy(indstr, a_index);
+            read_buff.resize(strlen(a_index) + 1, 0);
+            strcpy(read_buff.data(), a_index);
         }
-        token = strtok(indstr, seps);
-        while (token) {
-            num1 = -1;
-            num2 = -1;
-            p_del = strchr(token, ':');
+        //read all framenr:bytepos pairs
+        const char* seps = " \n";
+        for (char* token = strtok(read_buff.data(), seps);
+                token != nullptr;
+                token = strtok(nullptr, seps)) {
+            int num1 = -1;
+            int64_t num2 = -1;
+            char* p_del = strchr(token, ':');
             if (!p_del)
                 break;
-            ret = sscanf(token, "%d", &num1);
-            ret = sscanf(p_del + 1, "%d", &num2);
+            sscanf(token, "%d", &num1);
+            sscanf(p_del + 1, "%" SCNi64, &num2);
 
             if ((num1 < 0) || (num2 < 0))
                 break;
-            rawindex[p_ri].framenr = num1;
-            rawindex[p_ri].bytepos = num2;
-            p_ri++;
-            token = strtok(0, seps);
+            rawindex.emplace_back(num1, num2);
         }
-        rimax = p_ri - 1;
-        delete indstr;
     }
 
-    if ((rimax < 0) || rawindex[0].framenr)
-        env->ThrowError("When using an index: frame 0 is mandatory");    //at least an entries for frame0
+    validate(rawindex.size() == 0 || rawindex[0].number != 0,
+             "When using an index: frame 0 is mandatory");    //at least an entries for frame0
 
 //fill up missing bytepos (create full index)
-    frame = 0;    //framenumber
-    p_ri = 0;    //pointer to raw index
-    big_frame_step = 0;
-    big_steps = 0;
-    big_delta = 0;
+    int frame = 0;          //framenumber
+    int p_ri = 0;           //pointer to raw index
+    int delta = framesize;  //delta between 1 frame
+    int big_delta = 0;      //delta between many e.g. 25 frames
+    int big_steps = 0;      //how many big deltas have occured
+    int big_frame_step = 0; //how many frames is big_delta for?
 
-    delta = framesize;
+    int rimax = rawindex.size() - 1;
+
     //rawindex[1].bytepos - rawindex[0].bytepos;    //current bytepos delta
-    bytepos = rawindex[0].bytepos;
+    int64_t bytepos = rawindex[0].bytepos;
     index[frame].type = 'K';
     while ((frame < maxframe) && ((bytepos + framesize) <= fileSize)) {    //next frame must be readable
         index[frame].index = bytepos;
 
-        if ((p_ri < rimax) && (rawindex[p_ri].framenr <= frame)) {
+        if ((p_ri < rimax) && (rawindex[p_ri].number <= frame)) {
             p_ri++;
             big_steps = 1;
         }
         frame++;
 
-        if ((p_ri > 0) && (rawindex[p_ri - 1].framenr + big_steps * big_frame_step == frame)) {
+        if ((p_ri > 0) && (rawindex[p_ri - 1].number + big_steps * big_frame_step == frame)) {
             bytepos = rawindex[p_ri - 1].bytepos + big_delta * big_steps;
             big_steps++;
             index[frame].type = 'B';
         } else {
-            if (rawindex[p_ri].framenr == frame) {
+            if (rawindex[p_ri].number == frame) {
                 bytepos = rawindex[p_ri].bytepos;    //sync if framenumber is given in raw index
                 index[frame].type = 'K';
             } else {
@@ -347,27 +328,26 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
         }
 
 //check for new delta and big_delta
-        if ((p_ri > 0) && (rawindex[p_ri].framenr == rawindex[p_ri-1].framenr + 1)) {
+        if ((p_ri > 0) && (rawindex[p_ri].number == rawindex[p_ri-1].number + 1)) {
             delta = (int)(rawindex[p_ri].bytepos - rawindex[p_ri - 1].bytepos);
         } else if (p_ri > 1) {
 //if more than 1 frame difference and
 //2 successive equal distances then remember as big_delta
 //if second delta < first delta then reset
-            if (rawindex[p_ri].framenr - rawindex[p_ri - 1].framenr == rawindex[p_ri - 1].framenr - rawindex[p_ri - 2].framenr) {
-                big_frame_step = rawindex[p_ri].framenr - rawindex[p_ri - 1].framenr;
+            if (rawindex[p_ri].number - rawindex[p_ri - 1].number == rawindex[p_ri - 1].number - rawindex[p_ri - 2].number) {
+                big_frame_step = rawindex[p_ri].number - rawindex[p_ri - 1].number;
                 big_delta = (int)(rawindex[p_ri].bytepos - rawindex[p_ri - 1].bytepos);
             } else {
-                if ((rawindex[p_ri].framenr - rawindex[p_ri - 1].framenr) < (rawindex[p_ri - 1].framenr - rawindex[p_ri - 2].framenr)) {
+                if ((rawindex[p_ri].number - rawindex[p_ri - 1].number) < (rawindex[p_ri - 1].number - rawindex[p_ri - 2].number)) {
                     big_delta = 0;
                     big_frame_step = 0;
                 }
-                if (frame >= rawindex[p_ri].framenr) {
+                if (frame >= rawindex[p_ri].number) {
                     big_delta = 0;
                     big_frame_step = 0;
                 }
             }
         }
-        frame = frame;
     }
     vi.num_frames = frame;
 }
@@ -375,16 +355,15 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
 
 RawSource::~RawSource() {
     _close(fileHandle);
-    delete [] rawbuf;
-    delete [] index;
-    delete [] rawindex;
 }
 
 PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
 {
+    const i_struct* idx = index.data();
+
     if (show && !level) {    //output debug info - call Subtitle
         char message[255];
-        sprintf(message, "%d : %I64d %c", n, index[n].index, index[n].type);
+        sprintf(message, "%d : %I64d %c", n, idx[n].index, idx[n].type);
         const char* arg_names[11] = {0, 0, "x", "y", "font", "size", "text_color", "halo_color"};
         AVSValue args[8] = {this, AVSValue(message), 4, 12, "Arial", 15, 0xFFFFFF, 0x000000};
         level = 1;
@@ -395,10 +374,10 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
     }
 
     PVideoFrame dst = env->NewVideoFrame(vi);
-    if ((ret = (int)_lseeki64(fileHandle, index[n].index, SEEK_SET)) == -1L) {
+    if (_lseeki64(fileHandle, idx[n].index, SEEK_SET) == -1L) {
         return dst;    //error. do nothing
     }
-    WriteDestFrame(fileHandle, dst, rawbuf, order, col_count, env);
+    WriteDestFrame(fileHandle, dst, rawbuf.data(), order, col_count, env);
     return dst;
 }
 
