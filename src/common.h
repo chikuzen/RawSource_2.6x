@@ -14,6 +14,9 @@
 
 #pragma warning(disable: 4996)
 
+
+typedef IScriptEnvironment ise_t;
+
 constexpr unsigned MIN_WIDTH = 8;
 constexpr unsigned MIN_HEIGHT = 8;
 constexpr unsigned MAX_WIDTH = 65536;

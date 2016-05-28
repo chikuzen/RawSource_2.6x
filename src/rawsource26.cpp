@@ -17,9 +17,9 @@
 #define MAX_Y4M_HEADER 128
 
 
-typedef void (*FuncWriteDestFrame)(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, IScriptEnvironment* env);
+typedef void (*FuncWriteDestFrame)(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, ise_t* env);
 
-static void WriteNV420(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, IScriptEnvironment* env)
+static void WriteNV420(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, ise_t* env)
 {
     int width = dst->GetRowSize(PLANAR_Y);
     int height = dst->GetHeight(PLANAR_Y);
@@ -51,7 +51,7 @@ static void WriteNV420(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int 
     }
 }
 
-static void WritePlanar(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, IScriptEnvironment* env)
+static void WritePlanar(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, ise_t* env)
 {
     for (int i = 0; i < count; i++) {
         int debug = order[i];
@@ -66,7 +66,7 @@ static void WritePlanar(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int
     }
 }
 
-static void WritePacked(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, IScriptEnvironment* env)
+static void WritePacked(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, ise_t* env)
 {
     int width = dst->GetRowSize();
     int height = dst->GetHeight();
@@ -78,7 +78,7 @@ static void WritePacked(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int
     env->BitBlt(dstp, pitch, buff, width, width, height);
 }
 
-static void WritePackedWithReorder(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, IScriptEnvironment* env)
+static void WritePackedWithReorder(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count, ise_t* env)
 {
     int width = dst->GetRowSize();
     int height = dst->GetHeight();
@@ -129,18 +129,18 @@ class RawSource : public IClip {
 public:
     RawSource(const char *sourcefile, const int a_width, const int a_height,
               const char *a_pix_type, const int a_fpsnum, const int a_fpsden,
-              const char *a_index, const bool a_show, IScriptEnvironment *env);
+              const char *a_index, const bool a_show, ise_t *env);
     virtual ~RawSource();
-    PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment *env);
+    PVideoFrame __stdcall GetFrame(int n, ise_t *env);
     bool __stdcall GetParity(int n);
-    void __stdcall GetAudio(void *buf, int64_t start, int64_t count, IScriptEnvironment* env) {}
+    void __stdcall GetAudio(void *buf, int64_t start, int64_t count, ise_t* env) {}
     const VideoInfo& __stdcall GetVideoInfo() {return vi;}
     int __stdcall SetCacheHints(int cachehints,int frame_range) { return 0; }
 };
 
 RawSource::RawSource (const char *sourcefile, const int a_width, const int a_height,
                       const char *a_pix_type, const int a_fpsnum, const int a_fpsden,
-                      const char *a_index, const bool a_show, IScriptEnvironment *env)
+                      const char *a_index, const bool a_show, ise_t *env)
 {
     if ((fileHandle = _open(sourcefile, _O_BINARY | _O_RDONLY)) == -1)
         env->ThrowError("Cannot open videofile.");
@@ -374,7 +374,7 @@ RawSource::~RawSource() {
     delete [] rawindex;
 }
 
-PVideoFrame __stdcall RawSource::GetFrame(int n, IScriptEnvironment* env)
+PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
 {
     if (show && !level) {    //output debug info - call Subtitle
         char message[255];
@@ -404,7 +404,7 @@ bool __stdcall RawSource::GetParity(int n)
 
 
 
-AVSValue __cdecl CreateRawSource(AVSValue args, void* user_data, IScriptEnvironment* env)
+AVSValue __cdecl CreateRawSource(AVSValue args, void* user_data, ise_t* env)
 {
     char buff[128] = {};
 
@@ -448,7 +448,7 @@ const AVS_Linkage* AVS_linkage = nullptr;
 
 
 extern "C" __declspec(dllexport) const char* __stdcall
-AvisynthPluginInit3(IScriptEnvironment* env, const AVS_Linkage* const vectors)
+AvisynthPluginInit3(ise_t* env, const AVS_Linkage* const vectors)
 {
     AVS_linkage = vectors;
     env->AddFunction("RawSource",
