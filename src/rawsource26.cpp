@@ -9,8 +9,7 @@
 
 #include <io.h>
 #include <fcntl.h>
-#include <cstdio>
-#include <cinttypes>
+#include <cstdint>
 #include "common.h"
 
 
@@ -119,14 +118,15 @@ class RawSource : public IClip {
     FuncWriteDestFrame WriteDestFrame;
 
 public:
-    RawSource(const char *sourcefile, const int a_width, const int a_height,
-              const char *a_pix_type, const int a_fpsnum, const int a_fpsden,
-              const char *a_index, const bool a_show, ise_t *env);
-    virtual ~RawSource();
+    RawSource(const char* source, const int width, const int height,
+              const char* pix_type, const int fpsnum, const int fpsden,
+              const char* index, const bool show);
     PVideoFrame __stdcall GetFrame(int n, ise_t *env);
-    bool __stdcall GetParity(int n);
+
+    ~RawSource() { _close(fileHandle); }
+    bool __stdcall GetParity(int n) { return vi.image_type == VideoInfo::IT_TFF; }
     void __stdcall GetAudio(void *buf, int64_t start, int64_t count, ise_t* env) {}
-    const VideoInfo& __stdcall GetVideoInfo() {return vi;}
+    const VideoInfo& __stdcall GetVideoInfo() { return vi; }
     int __stdcall SetCacheHints(int cachehints,int frame_range) { return 0; }
 };
 
@@ -187,7 +187,7 @@ void RawSource::setProcess(const char* pix_type)
 
 RawSource::RawSource (const char *sourcefile, const int a_width, const int a_height,
                       const char *a_pix_type, const int a_fpsnum, const int a_fpsden,
-                      const char *a_index, const bool a_show, ise_t *env)
+                      const char *a_index, const bool a_show)
 {
     fileHandle = _open(sourcefile, _O_BINARY | _O_RDONLY);
     validate(fileHandle == -1, "Cannot open videofile.");
@@ -230,7 +230,6 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
 
     setProcess(pix_type);
 
-
     size_t framesize = vi.width * vi.height * vi.BitsPerPixel() / 8;
 
     int maxframe = static_cast<int>(fileSize / framesize);    //1 = one frame
@@ -242,54 +241,9 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
     rawbuf.resize(vi.IsPlanar() ? vi.width * vi.height : framesize);
 
     //index build using string descriptor
-    struct rindex {
-        int number;
-        int64_t bytepos;
-        rindex(int x, int64_t y) : number(x), bytepos(y) {}
-    };
 
     std::vector<rindex> rawindex;
-    rawindex.reserve(2);
-
-    if (!strcmp(a_index, "")) {
-        rawindex.emplace_back(0, header_offset);
-        rawindex.emplace_back(1, header_offset + frame_offset + framesize);
-    } else {
-        std::vector<char> read_buff;
-        const char * pos = strchr(a_index, '.');
-        if (pos != nullptr) { //assume indexstring is a filename
-            FILE* indexfile = fopen(a_index, "r");
-            validate(!indexfile, "Cannot open indexfile.");
-            fseek(indexfile, 0, SEEK_END);
-            read_buff.resize(ftell(indexfile) + 1, 0);
-            fseek(indexfile, 0, SEEK_SET);
-            fread(read_buff.data(), 1, read_buff.size() - 1, indexfile);
-            fclose(indexfile);
-        } else {
-            read_buff.resize(strlen(a_index) + 1, 0);
-            strcpy(read_buff.data(), a_index);
-        }
-        //read all framenr:bytepos pairs
-        const char* seps = " \n";
-        for (char* token = strtok(read_buff.data(), seps);
-                token != nullptr;
-                token = strtok(nullptr, seps)) {
-            int num1 = -1;
-            int64_t num2 = -1;
-            char* p_del = strchr(token, ':');
-            if (!p_del)
-                break;
-            sscanf(token, "%d", &num1);
-            sscanf(p_del + 1, "%" SCNi64, &num2);
-
-            if ((num1 < 0) || (num2 < 0))
-                break;
-            rawindex.emplace_back(num1, num2);
-        }
-    }
-
-    validate(rawindex.size() == 0 || rawindex[0].number != 0,
-             "When using an index: frame 0 is mandatory");    //at least an entries for frame0
+    set_rawindex(rawindex, a_index, header_offset, frame_offset, framesize);
 
 //fill up missing bytepos (create full index)
     int frame = 0;          //framenumber
@@ -298,7 +252,6 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
     int big_delta = 0;      //delta between many e.g. 25 frames
     int big_steps = 0;      //how many big deltas have occured
     int big_frame_step = 0; //how many frames is big_delta for?
-
     int rimax = rawindex.size() - 1;
 
     //rawindex[1].bytepos - rawindex[0].bytepos;    //current bytepos delta
@@ -353,10 +306,6 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
 }
 
 
-RawSource::~RawSource() {
-    _close(fileHandle);
-}
-
 PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
 {
     const i_struct* idx = index.data();
@@ -380,13 +329,6 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
     WriteDestFrame(fileHandle, dst, rawbuf.data(), order, col_count, env);
     return dst;
 }
-
-
-bool __stdcall RawSource::GetParity(int n)
-{
-    return vi.image_type == VideoInfo::IT_TFF;
-}
-
 
 
 AVSValue __cdecl CreateRawSource(AVSValue args, void* user_data, ise_t* env)
@@ -420,7 +362,7 @@ AVSValue __cdecl CreateRawSource(AVSValue args, void* user_data, ise_t* env)
                  "fpsnum and fpsden need to be 1 or higher.");
 
         return new RawSource(source, width, height, pix_type, fpsnum, fpsden,
-                             index, show, env);
+                             index, show);
 
     } catch (std::runtime_error& e) {
         env->ThrowError("RawSource: %s", e.what());

@@ -23,6 +23,17 @@ constexpr unsigned MAX_WIDTH = 65536;
 constexpr unsigned MAX_HEIGHT = 65536;
 
 
+struct rindex {
+    int number;
+    int64_t bytepos;
+    rindex(int x, int64_t y) : number(x), bytepos(y) {}
+};
+
+void set_rawindex(std::vector<rindex>& r, const char* index,
+                  int64_t header_offset, int64_t frame_offset,
+                  size_t framesize);
+
+
 bool parse_y4m(std::vector<char>& header, VideoInfo& vi,
                int64_t& header_offset, int64_t& frame_offset);
 

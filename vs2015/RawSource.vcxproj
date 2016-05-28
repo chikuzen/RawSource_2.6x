@@ -131,7 +131,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\src\rawsource26.cpp" />
-    <ClCompile Include="..\src\y4m_parse.cpp" />
+    <ClCompile Include="..\src\utils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\src\rawsource26.html" />
