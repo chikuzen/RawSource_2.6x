@@ -61,6 +61,9 @@ void __stdcall
 write_packed_reorder(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
                      int count, ise_t* env) noexcept;
 
+void __stdcall write_black_frame(PVideoFrame& dst, const VideoInfo& vi) noexcept;
+
+
 static inline void validate(bool cond, const char* msg)
 {
     if (cond) throw std::runtime_error(msg);

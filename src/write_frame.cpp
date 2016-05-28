@@ -94,3 +94,26 @@ write_packed_reorder(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
         dstp += pitch;
     }
 }
+
+
+void __stdcall
+write_black_frame(PVideoFrame& dst, const VideoInfo& vi) noexcept
+{
+    uint8_t* dstp = dst->GetWritePtr();
+    size_t size = dst->GetPitch() * dst->GetHeight();
+
+    if (vi.IsYUY2()) {
+        uint32_t* d = reinterpret_cast<uint32_t*>(dstp);
+        std::fill(d, d + size / sizeof(uint32_t), 0x80008000);
+        return;
+    }
+
+    memset(dstp, 0, size);
+    if (vi.IsRGB() || vi.IsY8()) {
+        return;
+    }
+
+    size = dst->GetPitch(PLANAR_U) * dst->GetHeight(PLANAR_U);
+    memset(dst->GetWritePtr(PLANAR_U), 0x80, size);
+    memset(dst->GetWritePtr(PLANAR_V), 0x80, size);
+}

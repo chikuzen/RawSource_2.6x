@@ -9,7 +9,7 @@
 
 #include <io.h>
 #include <fcntl.h>
-#include <cstdint>
+#include <cinttypes>
 #include <malloc.h>
 #include "common.h"
 
@@ -22,7 +22,6 @@ class RawSource : public IClip {
     int64_t fileSize;
     int order[4];
     int col_count;
-    int level;
     bool show;
 
     uint8_t* rawbuf;
@@ -105,27 +104,24 @@ void RawSource::setProcess(const char* pix_type)
 }
 
 
-RawSource::RawSource (const char *sourcefile, const int a_width, const int a_height,
-                      const char *a_pix_type, const int a_fpsnum, const int a_fpsden,
-                      const char *a_index, const bool a_show)
+RawSource::RawSource (const char *source, const int width, const int height,
+                      const char *ptype, const int fpsnum, const int fpsden,
+                      const char *a_index, const bool s) : show(s)
 {
-    fileHandle = _open(sourcefile, _O_BINARY | _O_RDONLY);
+    fileHandle = _open(source, _O_BINARY | _O_RDONLY);
     validate(fileHandle == -1, "Cannot open videofile.");
 
     fileSize = _filelengthi64(fileHandle);
     validate(fileSize == -1L, "Cannot get videofile length.");
 
     memset(&vi, 0, sizeof(VideoInfo));
-    vi.width = a_width;
-    vi.height = a_height;
-    vi.SetFPS(a_fpsnum, a_fpsden);
+    vi.width = width;
+    vi.height = height;
+    vi.SetFPS(fpsnum, fpsden);
     vi.SetFieldBased(false);
 
     char pix_type[16] = {};
-    strcpy(pix_type, a_pix_type);
-
-    level = 0;
-    show = a_show;
+    strcpy(pix_type, ptype);
 
     int64_t header_offset = 0;
     int64_t frame_offset = 0;
@@ -174,24 +170,24 @@ RawSource::RawSource (const char *sourcefile, const int a_width, const int a_hei
 PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
 {
     const i_struct* idx = index.data();
-
-    if (show && !level) {    //output debug info - call Subtitle
-        char message[255];
-        sprintf(message, "%d : %I64d %c", n, idx[n].index, idx[n].type);
-        const char* arg_names[11] = {0, 0, "x", "y", "font", "size", "text_color", "halo_color"};
-        AVSValue args[8] = {this, AVSValue(message), 4, 12, "Arial", 15, 0xFFFFFF, 0x000000};
-        level = 1;
-        PClip resultClip = (env->Invoke("Subtitle", AVSValue(args, 8), arg_names )).AsClip();
-        PVideoFrame src1 = resultClip->GetFrame(n, env);
-        level = 0;
-        return src1;
-    }
-
     PVideoFrame dst = env->NewVideoFrame(vi);
+
     if (_lseeki64(fileHandle, idx[n].index, SEEK_SET) == -1L) {
-        return dst;    //error. do nothing
+        // black frame with message
+        write_black_frame(dst, vi);
+        env->ApplyMessage(&dst, vi, "failed to seek file!", vi.width,
+                          0x00FFFFFF, 0x00FFFFFF, 0);
+        return dst;
     }
+
     writeDestFrame(fileHandle, dst, rawbuf, order, col_count, env);
+
+    if (show) { //output debug info
+        char info[64];
+        sprintf(info, "%d : %" PRIi64 " %c", n, idx[n].index, idx[n].type);
+        env->ApplyMessage(&dst, vi, info, vi.width / 2, 0x00FFFFFF, 0, 0);
+    }
+
     return dst;
 }
 
