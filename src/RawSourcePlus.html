@@ -15,7 +15,7 @@
     <li>Visual C++ Redistributable for Visual Studio 2015</li>
 </ul>
 <h4>How to use</h4>
-<p><code>RawSource</code> (<var>string &quot;file&quot;, int &quot;width&quot;, 
+<p><code>RawSourcePlus</code> (<var>string &quot;file&quot;, int &quot;width&quot;, 
   int &quot;height&quot;, string &quot;pixel_type&quot;, int &quot;fpsnum&quot;,
   int &quot;fpsden&quot;, string &quot;index&quot;, bool &quot;show&quot;</var>)<br>
 </p>
@@ -59,7 +59,7 @@
 <table border="1">
   <tr> 
     <td> 
-      <pre>RawSource(&quot;d:\yuv4mpeg.y4m&quot;)  #this assumes there is a valid YUV4MPEG2-header inside.
+      <pre>RawSourcePlus(&quot;d:\yuv4mpeg.y4m&quot;)  #this assumes there is a valid YUV4MPEG2-header inside.
                               #If not, default values are used: width=720, height=576, pixel_type=&quot;YUY2&quot;</pre>
     </td>
   </tr>
@@ -68,7 +68,7 @@
 <table border="1">
   <tr> 
     <td> 
-      <pre>RawSource(&quot;d:\src6_625.raw&quot;,720,576,&quot;BGRA&quot;) # really a raw file<br>                                            # if you are unsure about the pixel_type, simply try out all possible values.</pre>
+      <pre>RawSourcePlus(&quot;d:\src6_625.raw&quot;,720,576,&quot;BGRA&quot;) # really a raw file<br>                                            # if you are unsure about the pixel_type, simply try out all possible values.</pre>
     </td>
   </tr>
 </table>
@@ -77,7 +77,7 @@
 <table border="1">
   <tr> 
     <td> 
-      <pre>RawSource(&quot;d:\yuv.mov&quot;,720,576,&quot;UYVY&quot;, index=&quot;0:192512 1:1021952 25:21120512 50:42048512 75:62976512&quot;)</pre>
+      <pre>RawSourcePlus(&quot;d:\yuv.mov&quot;,720,576,&quot;UYVY&quot;, index=&quot;0:192512 1:1021952 25:21120512 50:42048512 75:62976512&quot;)</pre>
     </td>
   </tr>
 </table>

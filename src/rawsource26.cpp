@@ -249,7 +249,7 @@ AVSValue __cdecl create_rawsource(AVSValue args, void* user_data, ise_t* env)
                              index, show);
 
     } catch (std::runtime_error& e) {
-        env->ThrowError("RawSource: %s", e.what());
+        env->ThrowError("RawSourcePlus: %s", e.what());
     }
     return 0;
 }
@@ -273,9 +273,9 @@ AvisynthPluginInit3(ise_t* env, const AVS_Linkage* const vectors)
         "[index]s"
         "[show]b";
 
-    env->AddFunction("RawSource", args, create_rawsource, nullptr);
+    env->AddFunction("RawSourcePlus", args, create_rawsource, nullptr);
     static_cast<IScriptEnvironment2*>(env)->SetFilterMTMode(
-        "RawSource", MT_SERIALIZED, true);
+        "RawSourcePlus", MT_SERIALIZED, true);
 
     return "RawSource for Avisynth+.";
 }
