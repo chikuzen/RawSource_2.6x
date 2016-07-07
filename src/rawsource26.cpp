@@ -1,17 +1,21 @@
 /*
- RawSource26 - reads raw video data files
+ RawSourcePlus - reads raw video data files
 
     Author: Oka Motofumi (chikuzen.mo at gmail dot com)
 
     This program is rewriting of RawSource.dll(original author is Ernst Pech)
-    for avisynth2.6x/Avisynth+.
+    for Avisynth+.
 */
 
 
 #include <io.h>
 #include <fcntl.h>
-#include <cinttypes>
 #include <malloc.h>
+#include <algorithm>
+#include <cinttypes>
+#include <string>
+#include <tuple>
+#include <unordered_map>
 #include "common.h"
 
 
@@ -50,58 +54,83 @@ public:
 
 void RawSource::setProcess(const char* pix_type)
 {
+    using std::make_tuple;
+    constexpr int Y = PLANAR_Y, U = PLANAR_U, V = PLANAR_V;
+
     typedef void (__stdcall *write_frame_t)(
         int, PVideoFrame&, uint8_t*, int*, int, ise_t*);
+    typedef std::tuple<int, int, int, int, int, int, write_frame_t> pixel_format_t;
 
-    const struct {
-        const char *fmt_name;
-        const int avs_pix_type;
-        const int order[4];
-        const int cnt;
-        write_frame_t func;
-    } pixelformats[] = {
-        {"BGR",   VideoInfo::CS_BGR24, {       0,        1,        2, 9}, 3, write_packed        },
-        {"BGR24", VideoInfo::CS_BGR24, {       0,        1,        2, 9}, 3, write_packed        },
-        {"RGB",   VideoInfo::CS_BGR24, {       2,        1,        0, 9}, 3, write_packed_reorder},
-        {"RGB24", VideoInfo::CS_BGR24, {       2,        1,        0, 9}, 3, write_packed_reorder},
-        {"BGRA",  VideoInfo::CS_BGR32, {       0,        1,        2, 3}, 4, write_packed        },
-        {"BGR32", VideoInfo::CS_BGR32, {       0,        1,        2, 3}, 4, write_packed        },
-        {"RGBA",  VideoInfo::CS_BGR32, {       2,        1,        0, 3}, 4, write_packed_reorder},
-        {"RGB32", VideoInfo::CS_BGR32, {       2,        1,        0, 3}, 4, write_packed_reorder},
-        {"ARGB",  VideoInfo::CS_BGR32, {       3,        2,        1, 0}, 4, write_packed_reorder},
-        {"ABGR",  VideoInfo::CS_BGR32, {       3,        0,        1, 2}, 4, write_packed_reorder},
-        {"YUY2",  VideoInfo::CS_YUY2,  {       0,        1,        2, 3}, 4, write_packed        },
-        {"YUYV",  VideoInfo::CS_YUY2,  {       0,        1,        2, 3}, 4, write_packed        },
-        {"UYVY",  VideoInfo::CS_YUY2,  {       1,        0,        3, 2}, 4, write_packed_reorder},
-        {"VYUY",  VideoInfo::CS_YUY2,  {       3,        0,        1, 2}, 4, write_packed_reorder},
-        {"YV24",  VideoInfo::CS_YV24,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, write_planar        },
-        {"I444",  VideoInfo::CS_YV24,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, write_planar        },
-        {"YV16",  VideoInfo::CS_YV16,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, write_planar        },
-        {"I422",  VideoInfo::CS_YV16,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, write_planar        },
-        {"YV411", VideoInfo::CS_YV411, {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, write_planar        },
-        {"Y41B",  VideoInfo::CS_YV411, {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, write_planar        },
-        {"I411",  VideoInfo::CS_YV411, {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, write_planar        },
-        {"I420",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, write_planar        },
-        {"IYUV",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 3, write_planar        },
-        {"YV12",  VideoInfo::CS_YV12,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 3, write_planar        },
-        {"NV12",  VideoInfo::CS_I420,  {PLANAR_Y, PLANAR_U, PLANAR_V, 0}, 2, write_NV420         },
-        {"NV21",  VideoInfo::CS_YV12,  {PLANAR_Y, PLANAR_V, PLANAR_U, 0}, 2, write_NV420         },
-        {"Y8",    VideoInfo::CS_Y8,    {PLANAR_Y,        0,        0, 0}, 1, write_planar        },
-        {"GRAY",  VideoInfo::CS_Y8,    {PLANAR_Y,        0,        0, 0}, 1, write_planar        },
-        { pix_type, VideoInfo::CS_UNKNOWN, {0, 0, 0, 0}, 0, nullptr }
-    };
-    int i = 0;
-    while (stricmp(pix_type, pixelformats[i].fmt_name)) ++i;
+    std::unordered_map<std::string, pixel_format_t> table;
 
-    validate(pixelformats[i].avs_pix_type == VideoInfo::CS_UNKNOWN,
-             "Invalid pixel type. Supported: RGB, RGBA, BGR, BGRA, ARGB,"
-             " ABGR, YV24, I444, YUY2, YUYV, UYVY, YVYU, VYUY, YV16, I422,"
-             " YV411, Y41B, I411, YV12, I420, IYUV, NV12, NV21, Y8, GRAY");
+    table["BGR"]       = make_tuple(VideoInfo::CS_BGR24,     0, 1, 2, -1, 1, write_planar);
+    table["BGR24"]     = make_tuple(VideoInfo::CS_BGR24,     0, 1, 2, -1, 1, write_planar);
+    table["RGB"]       = make_tuple(VideoInfo::CS_BGR24,     2, 1, 0, -1, 3, write_packed_reorder);
+    table["RGB24"]     = make_tuple(VideoInfo::CS_BGR24,     2, 1, 0, -1, 3, write_packed_reorder);
 
-    vi.pixel_type = pixelformats[i].avs_pix_type;
-    memcpy(order, pixelformats[i].order, sizeof(int) * 4);
-    col_count = pixelformats[i].cnt;
-    writeDestFrame = pixelformats[i].func;
+    table["BGRA"]      = make_tuple(VideoInfo::CS_BGR32,     0, 1, 2,  3, 1, write_planar);
+    table["BGR32"]     = make_tuple(VideoInfo::CS_BGR32,     0, 1, 2,  3, 1, write_planar);
+    table["RGBA"]      = make_tuple(VideoInfo::CS_BGR32,     2, 1, 0,  3, 4, write_packed_reorder);
+    table["RGB32"]     = make_tuple(VideoInfo::CS_BGR32,     2, 1, 0,  3, 4, write_packed_reorder);
+    table["ARGB"]      = make_tuple(VideoInfo::CS_BGR32,     3, 2, 1,  0, 4, write_packed_reorder);
+    table["ABGR"]      = make_tuple(VideoInfo::CS_BGR32,     3, 0, 1,  2, 4, write_packed_reorder);
+
+    table["YUY2"]      = make_tuple(VideoInfo::CS_YUY2,      0, 1, 2,  3, 1, write_planar);
+    table["YUYV"]      = make_tuple(VideoInfo::CS_YUY2,      0, 1, 2,  3, 1, write_planar);
+    table["UYVY"]      = make_tuple(VideoInfo::CS_YUY2,      1, 0, 3,  2, 4, write_packed_reorder);
+    table["VYUY"]      = make_tuple(VideoInfo::CS_YUY2,      3, 0, 1,  2, 4, write_packed_reorder);
+
+    table["YV24"]      = make_tuple(VideoInfo::CS_YV24,      Y, V, U, -1, 3, write_planar);
+    table["I444"]      = make_tuple(VideoInfo::CS_YV24,      Y, U, V, -1, 3, write_planar);
+    table["YUV444P8"]  = make_tuple(VideoInfo::CS_YV24,      Y, U, V, -1, 3, write_planar);
+    table["YUV444P16"] = make_tuple(VideoInfo::CS_YUV444P16, Y, U, V, -1, 3, write_planar);
+    table["YUV444PS"]  = make_tuple(VideoInfo::CS_YUV444PS,  Y, U, V, -1, 3, write_planar);
+
+    table["YV16"]      = make_tuple(VideoInfo::CS_YV16,      Y, V, U, -1, 3, write_planar);
+    table["I422"]      = make_tuple(VideoInfo::CS_YV16,      Y, U, V, -1, 3, write_planar);
+    table["YUV422P8"]  = make_tuple(VideoInfo::CS_YV16,      Y, U, V, -1, 3, write_planar);
+    table["YUV422P16"] = make_tuple(VideoInfo::CS_YUV422P16, Y, U, V, -1, 3, write_planar);
+    table["YUV422PS"]  = make_tuple(VideoInfo::CS_YUV422PS,  Y, U, V, -1, 3, write_planar);
+    table["P210"]      = make_tuple(VideoInfo::CS_YUV444P16, Y, U, V, -1, 2, write_packed_chroma_16);
+    table["P216"]      = make_tuple(VideoInfo::CS_YUV444P16, Y, U, V, -1, 2, write_packed_chroma_16);
+
+    table["YV411"]     = make_tuple(VideoInfo::CS_YV411,     Y, V, U, -1, 3, write_planar);
+    table["Y41B"]      = make_tuple(VideoInfo::CS_YV411,     Y, V, U, -1, 3, write_planar);
+    table["I411"]      = make_tuple(VideoInfo::CS_YV411,     Y, U, V, -1, 3, write_planar);
+    table["YUV411P8"]  = make_tuple(VideoInfo::CS_YV411,     Y, U, V, -1, 3, write_planar);
+
+    table["I420"]      = make_tuple(VideoInfo::CS_I420,      Y, U, V, -1, 3, write_planar);
+    table["IYUV"]      = make_tuple(VideoInfo::CS_I420,      Y, U, V, -1, 3, write_planar);
+    table["YV12"]      = make_tuple(VideoInfo::CS_YV12,      Y, V, U, -1, 3, write_planar);
+    table["YUV420P8"]  = make_tuple(VideoInfo::CS_I420,      Y, U, V, -1, 3, write_planar);
+    table["YUV420P16"] = make_tuple(VideoInfo::CS_YUV420P16, Y, U, V, -1, 3, write_planar);
+    table["YUV420PS"]  = make_tuple(VideoInfo::CS_YUV420PS,  Y, U, V, -1, 3, write_planar);
+
+    table["NV12"]      = make_tuple(VideoInfo::CS_I420,      Y, U, V, -1, 2, write_packed_chroma_8);
+    table["NV21"]      = make_tuple(VideoInfo::CS_YV12,      Y, V, U, -1, 2, write_packed_chroma_8);
+    table["P010"]      = make_tuple(VideoInfo::CS_YUV420P16, Y, U, V, -1, 2, write_packed_chroma_16);
+    table["P016"]      = make_tuple(VideoInfo::CS_YUV420P16, Y, U, V, -1, 2, write_packed_chroma_16);
+
+    table["Y8"]        = make_tuple(VideoInfo::CS_Y8,        Y, 0, 0, -1, 1, write_planar);
+    table["GRAY"]      = make_tuple(VideoInfo::CS_Y8,        Y, 0, 0, -1, 1, write_planar);
+    table["GRAY8"]     = make_tuple(VideoInfo::CS_Y8,        Y, 0, 0, -1, 1, write_planar);
+    table["Y16"]       = make_tuple(VideoInfo::CS_Y16,       Y, 0, 0, -1, 1, write_planar);
+    table["GRAY16"]    = make_tuple(VideoInfo::CS_Y16,       Y, 0, 0, -1, 1, write_planar);
+    table["Y32"]       = make_tuple(VideoInfo::CS_Y32,       Y, 0, 0, -1, 1, write_planar);
+    table["GRAYS"]     = make_tuple(VideoInfo::CS_Y32,       Y, 0, 0, -1, 1, write_planar);
+
+    auto key = std::string(pix_type);
+    std::transform(key.begin(), key.end(), key.begin(), ::toupper);
+
+    std::tie(vi.pixel_type, order[0], order[1], order[2], order[3], col_count, writeDestFrame) = table[key];
+    validate(vi.pixel_type == 0,
+             "Invalid pixel type. Supported: RGB, RGBA, BGR, BGRA, ARGB, "
+             "ABGR, YV24, I444, YUY2, YUYV, UYVY, YVYU, VYUY, YV16, I422, "
+             "YV411, Y41B, I411, YV12, I420, IYUV, NV12, NV21, Y8, GRAY, "
+             "YUV444P8, YUV444P16, YUV444PS, YUV422P8, YUV422P16, YUV422PS, "
+             "YUV420P8, YUV420P16, YUV420PS, GRAY8, GRAY16, GRAYS, Y16, Y32, "
+             "P210, P216, P010, P016");
+
 }
 
 
@@ -131,16 +160,7 @@ RawSource::RawSource (const char *source, const int width, const int height,
         std::vector<char> read_buff(256, 0);
         char* data = read_buff.data();
         _read(fileHandle, data, read_buff.size()); //read some bytes and test on header
-        bool ret = parse_y4m(read_buff, vi, header_offset, frame_offset);
-
-        if (vi.width > MAX_WIDTH || vi.height > MAX_HEIGHT) {
-            const char* msg = "Resolution too big(%d x %d)."
-                              " Maximum acceptable resolution is %u x %u.";
-            sprintf(data, msg, vi.width, vi.height, MAX_WIDTH, MAX_HEIGHT);
-            throw std::runtime_error(data);
-        }
-
-        if (ret) {
+        if (parse_y4m(read_buff, vi, header_offset, frame_offset)) {
             strcpy(pix_type, data);
         }
     }
@@ -161,9 +181,14 @@ RawSource::RawSource (const char *source, const int width, const int height,
     index.resize(maxframe + 1);
     vi.num_frames = generate_index(index, rawindex, framesize, fileSize);
 
-    rawbuf = reinterpret_cast<uint8_t*>(
-        _aligned_malloc(vi.IsPlanar() ? vi.width * vi.height : framesize, 16));
-    validate(rawbuf == nullptr, "failed to allocate read buffer.");
+    void* b = _aligned_malloc(
+        vi.IsPlanar() ? vi.width * vi.height * vi.ComponentSize() : framesize, 64);
+    validate(b == nullptr, "failed to allocate read buffer.");
+    rawbuf = reinterpret_cast<uint8_t*>(b);
+
+    if (vi.ComponentSize() != 1) {
+        show = false;
+    }
 }
 
 
@@ -175,8 +200,10 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
     if (_lseeki64(fileHandle, idx[n].index, SEEK_SET) == -1L) {
         // black frame with message
         write_black_frame(dst, vi);
-        env->ApplyMessage(&dst, vi, "failed to seek file!", vi.width,
-                          0x00FFFFFF, 0x00FFFFFF, 0);
+        if (vi.ComponentSize() == 1) {
+            env->ApplyMessage(&dst, vi, "failed to seek file!", vi.width,
+                              0x00FFFFFF, 0x00FFFFFF, 0);
+        }
         return dst;
     }
 
@@ -202,22 +229,18 @@ AVSValue __cdecl create_rawsource(AVSValue args, void* user_data, ise_t* env)
         const char *source = args[0].AsString();
         const int width = args[1].AsInt(720);
         const int height = args[2].AsInt(576);
-        const char *pix_type = args[3].AsString("YUY2");
+        const char *pix_type = args[3].AsString("YUV420P8");
         const int fpsnum = args[4].AsInt(25);
         const int fpsden = args[5].AsInt(1);
         const char *index = args[6].AsString("");
         const bool show = args[7].AsBool(false);
 
         if (width < MIN_WIDTH || height < MIN_HEIGHT) {
-            sprintf(buff, "width and height need to be %u x %u or lower.",
-                    MIN_WIDTH, MIN_HEIGHT);
+            snprintf(buff, 127, "width and height need to be %u x %u or higher.",
+                     MIN_WIDTH, MIN_HEIGHT);
             throw std::runtime_error(buff);
         }
-        if (width >= MAX_WIDTH || height >= MAX_HEIGHT) {
-            sprintf(buff, "width and height need to be lower than %u x %u.",
-                    MAX_WIDTH, MAX_HEIGHT);
-            throw std::runtime_error(buff);
-        }
+
         validate(strlen(pix_type) > 15, "pixel_type is too long.");
         validate(fpsnum < 1 || fpsden < 1,
                  "fpsnum and fpsden need to be 1 or higher.");
@@ -251,12 +274,9 @@ AvisynthPluginInit3(ise_t* env, const AVS_Linkage* const vectors)
         "[show]b";
 
     env->AddFunction("RawSource", args, create_rawsource, nullptr);
+    static_cast<IScriptEnvironment2*>(env)->SetFilterMTMode(
+        "RawSource", MT_SERIALIZED, true);
 
-    if (env->FunctionExists("SetFilterMTMode")) {
-        static_cast<IScriptEnvironment2*>(
-            env)->SetFilterMTMode("RawSource", MT_SERIALIZED, true);
-    }
-
-    return "RawSource for AviSynth2.6x/Avisynth+.";
+    return "RawSource for Avisynth+.";
 }
 

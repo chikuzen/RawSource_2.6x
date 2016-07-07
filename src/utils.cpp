@@ -1,10 +1,10 @@
 /*
-RawSource26 - reads raw video data files
+RawSourcePlus - reads raw video data files
 
-Author: Oka Motofumi (chikuzen.mo at gmail dot com)
+    Author: Oka Motofumi (chikuzen.mo at gmail dot com)
 
-This program is rewriting of RawSource.dll(original author is Ernst Pech)
-for avisynth2.6x/Avisynth+.
+    This program is rewriting of RawSource.dll(original author is Ernst Pech)
+    for Avisynth+.
 */
 
 
@@ -33,11 +33,12 @@ bool parse_y4m(std::vector<char>& header, VideoInfo& vi,
 
     vi.height = 0;
     vi.width = 0;
-    strcpy(buff, "i420");
+    strcpy(buff, "YUV420P8");
 
     unsigned int numerator = 0;
     unsigned int denominator = 0;
-    char ctag[9] = {0};
+    char ctag[16] = {0};
+
     int64_t i;
     for (i = st_magic_len; i < buffsize && buff[i] != '\n'; ++i) {
         if (!strncmp(buff + i, " W", 2)) {
@@ -72,16 +73,48 @@ bool parse_y4m(std::vector<char>& header, VideoInfo& vi,
             sscanf(buff + i, "%s", ctag);
             if (!strncmp(ctag, "444alpha", 8)) {
                 strcpy(buff, "AYUV");
+            } else if (!strncmp(ctag, "444p16", 6)) {
+                strcpy(buff, "YUV444P16");
+            } else if (!strncmp(ctag, "444p14", 6)) {
+                strcpy(buff, "YUV444P16");
+            } else if (!strncmp(ctag, "444p12", 6)) {
+                strcpy(buff, "YUV444P16");
+            } else if (!strncmp(ctag, "444p10", 6)) {
+                strcpy(buff, "YUV444P16");
+            } else if (!strncmp(ctag, "444p9", 5)) {
+                strcpy(buff, "YUV444P16");
             } else if (!strncmp(ctag, "444", 3)) {
-                strcpy(buff, "I444");
+                strcpy(buff, "YUV444P8");
+            } else if (!strncmp(ctag, "422p16", 6)) {
+                strcpy(buff, "YUV422P16");
+            } else if (!strncmp(ctag, "422p14", 6)) {
+                strcpy(buff, "YUV422P16");
+            } else if (!strncmp(ctag, "422p12", 6)) {
+                strcpy(buff, "YUV422P16");
+            } else if (!strncmp(ctag, "422p10", 6)) {
+                strcpy(buff, "YUV422P16");
+            } else if (!strncmp(ctag, "422p9", 5)) {
+                strcpy(buff, "YUV422P16");
             } else if (!strncmp(ctag, "422", 3)) {
-                strcpy(buff, "I422");
+                strcpy(buff, "YUV422P8");
             } else if (!strncmp(ctag, "411", 3)) {
-                strcpy(buff, "I411");
+                strcpy(buff, "YUV411P8");
+            } else if (!strncmp(ctag, "420p16", 6)) {
+                strcpy(buff, "YUV420P16");
+            } else if (!strncmp(ctag, "420p14", 6)) {
+                strcpy(buff, "YUV420P16");
+            } else if (!strncmp(ctag, "420p12", 6)) {
+                strcpy(buff, "YUV420P16");
+            } else if (!strncmp(ctag, "420p10", 6)) {
+                strcpy(buff, "YUV420P16");
+            } else if (!strncmp(ctag, "420p9", 5)) {
+                strcpy(buff, "YUV420P16");
             } else if (!strncmp(ctag, "420", 3)) {
-                strcpy(buff, "I420");
+                strcpy(buff, "YUV420P8");
+            } else if (!strncmp(ctag, "mono16", 6)) {
+                strcpy(buff, "GRAY16");
             } else if (!strncmp(ctag, "mono", 4)) {
-                strcpy(buff, "GRAY");
+                strcpy(buff, "GRAY8");
             } else {
                 throw std::runtime_error(header_err);
             }

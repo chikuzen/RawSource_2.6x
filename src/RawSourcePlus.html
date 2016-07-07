@@ -2,16 +2,16 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>RawSource26</title>
+<title>RawSourcePlus</title>
 </head>
 <body bgcolor="#BED8CB" text="#000000">
-<h1>RawSource26</h1>
+<h1>RawSourcePlus</h1>
 <h3>Loading raw video data from files</h3>
-<p>for AviSynth 2.6.0 / Avisynth+ r2005 or greater</p>
+<p>for Avisynth+ r2003 or greater<br>This filter is only for Avisynth+MT. Avisynth2.6 is not supported.</p>
 <h4>requirements</h4>
 <ul>
     <li>Windows Vista sp2 or later</li>
-    <li>avisynth2.6.0 or later / Avisynth+ r1576 or greater</li>
+    <li>Avisynth+ r2003 or greater</li>
     <li>Visual C++ Redistributable for Visual Studio 2015</li>
 </ul>
 <h4>How to use</h4>
@@ -19,8 +19,7 @@
   int &quot;height&quot;, string &quot;pixel_type&quot;, int &quot;fpsnum&quot;,
   int &quot;fpsden&quot;, string &quot;index&quot;, bool &quot;show&quot;</var>)<br>
 </p>
-<p> RawSource26 opens a video file which contains 8bit YUV444, YUV422, YUV411, YUV420,
- Y8, or RGB video data.<br>
+<p> RawSourcePlus opens a video file which contains 8bit, 9bit, 10bit, 16bit and float YUV444, YUV422, YUV411, YUV420, Gray, or RGB video data.<br>
   There are three ways how the positions of the video frame data are calculated:</p>
 <ul>
   <li>a YUV4MPEG2-header is found, width/height/framerate/pixeltype/fieldorder
@@ -33,16 +32,24 @@
 <p>Supported <var>pixel_type</var>s are:<br>
   &nbsp;&nbsp;RGB, RGBA, BGR, BGRA, ARGB, ABGR (interleaved RGB without subsampling, resulting in AviSynth's RGB24 or RGB32)<br>
   &nbsp;&nbsp;YUY2(YUYV), YVYU, UYVY, VYUY (interleaved horizontally subsampled resulting in AviSynth's YUY2)<br>
-  &nbsp;&nbsp;I444, YV24 (planar without subsampling, resulting in AviSynth's YV24)<br>
-  &nbsp;&nbsp;I422, YV16 (planar horizontally subsampled, it is converted to AviSynth's YV16)<br>
-  &nbsp;&nbsp;I420(IYUV), YV12 (planar horizontally and vertically subsampled resulting in AviSynth's YV12)<br>
-  &nbsp;&nbsp;I411(Y41B), YV411 (planar horizontally subsampled, it is converted to AviSynth's YV411)<br>
-  &nbsp;&nbsp;NV12, NV21 (planar horizontally and vertically subsampled resulting in AviSynth's YV12)<br>
-  &nbsp;&nbsp;Y8(aka GRAY) (luma only resulting in AviSynth's Y8)
+  &nbsp;&nbsp;YUV444P8(/I444), YV24 (planar 8bit without subsampling, resulting in AviSynth's YV24)<br>
+  &nbsp;&nbsp;YUV422P8(/I422), YV16 (planar 8bit horizontally subsampled, it is converted to AviSynth's YV16)<br>
+  &nbsp;&nbsp;YUV420P8(/I420/IYUV), YV12 (planar 8bit horizontally and vertically subsampled resulting in AviSynth's YV12)<br>
+  &nbsp;&nbsp;YUV411P8(/I411/Y41B), YV411,  (planar horizontally subsampled, it is converted to AviSynth's YV411)<br>
+  &nbsp;&nbsp;NV12, NV21 (chroma interleaved 8bit horizontally and vertically subsampled resulting in AviSynth's YV12)<br>
+  &nbsp;&nbsp;Y8, GRAY8 (luma only resulting in AviSynth's Y8)
+  &nbsp;&nbsp;YUV444P9, YUV444P10, YUV444P16 (planar 9~16bit without subsampling, resulting in AviSynth+'s YUV444P16)<br>
+  &nbsp;&nbsp;YUV422P9, YUV422P10, YUV422P16 (planar 9~16bit horizontally subsampled, it is converted to AviSynth+'s YUV422P16)<br>
+  &nbsp;&nbsp;P210, P216 (chroma interleaved 16bit horizontally subsampled resulting in AviSynth's YUV422P16)<br>
+  &nbsp;&nbsp;YUV420P9, YUV420P10, YUV420P16 (planar 9~16bit horizontally and vertically subsampled resulting in AviSynth+'s YUV420P16)<br>
+  &nbsp;&nbsp;P010, P016 (chroma interleaved 16bit horizontally and vertically subsampled resulting in AviSynth's YUV420P16)<br>
+  &nbsp;&nbsp;Y16, GRAY16 (luma only 16bit resulting in AviSynth+'s Y16)
+  &nbsp;&nbsp;YUV444PS (planar single precision floating point(32bit) without subsampling, resulting in AviSynth+'s YUV444PS)<br>
+  &nbsp;&nbsp;YUV422PS (planar single precision floating point(32bit) horizontally subsampled, it is converted to AviSynth+'s YUV422PS)<br>
+  &nbsp;&nbsp;YUV420PS (planar single precision floating point(32bit) horizontally and vertically subsampled resulting in AviSynth+'s YUV420PS)<br>
+  &nbsp;&nbsp;Y32, GRAYS (luma only single precision floating point(32bit) resulting in AviSynth+'s Y32)
   </p>
-<p>Maximal <var>width/height</var> is 65536.<br>
-  The default value of framerate is 25fps, you can change it with specified 'fpsnum' and 'fpsden' if you need 
-  (e.g. for NTSC-material).</p>
+<p>The default value of framerate is 25fps, you can change it with specified 'fpsnum' and 'fpsden' if you need (e.g. for NTSC-material).</p>
 <p>With <var>show</var>=true the actually used byteposition for that frame is displayed, 
   followed by:<br>
   &nbsp;K = position given in index is used<br>
@@ -169,32 +176,14 @@ frame 101 at 1200000 (using delta)<br>...<br>frame 125 at 1490000 (using big_del
 </table>
 <p>The index string is treated as a filename, if there is an &quot;.&quot; inside. 
   The data is then read from that file, line breaks don't matter.</p>
-<h4>Finding those byte positions:</h4>
-<p>With <font color="#0033FF">yuvscan.exe</font> you can try to analyze files 
-  which contain YUV-data with only valid luma and chroma data (~16-240).<br>
-  The program searches for big uninterrupted blocks without bytes &lt; 16 or &gt;240 
-  and generates a &quot;index.txt&quot;-file, which can be used directly with 
-  rawsource (if you are really lucky, at least).<br>
-  It's only a command line version, you can change the default parameters. If 
-  you know the height and width of the data, the output will be much better.</p>
-<p><u>Usage:</u><br>
-  <tt>yuvscan.exe filename triggerlength threshold round_by_bytes</tt><br>
-  <br>
-  <tt>triggerlength</tt>: how long must one frame be (in bytes)<br>
-  <tt>threshold</tt>: what are considered valid YUV data (default 10, which means 
-  10 ... 255-10)<br>
-  <tt>round_by_bytes</tt>: as most data is stored at nice positions, the output 
-  can be rounded. default 9 which means 2^9 = $100</p>
+
 <h4>note:</h4>
-<p>On Avisynth+ MT, this filter is automatically registerd as MT_SERIALIZED.<br>
+<p>This filter is automatically registerd as MT_SERIALIZED.<br>
 You don't have to set it yourself.</p>
 <h4>original author:Ernst Pech&eacute;, 2005-10-13</h4>
 <h4>modified by Oka Motofumi, 2011-06-14</h4>
 <p>
-Version 2011-06-14 - First release.<br>
-Version 2011-09-25 - Change maximum width into 65536.<br>
-Version 2012-08-31 - Expand the size of read buffer to one frame at maximum, and change writing algorithm.<br>
-Version 2016-05-29 - Add 64bit binary</p>
-Version 2016-07-05 - Update avisynth.h to Avisynth+MT r2005
+Version 2016-07-07 - Modified RawSource26 to Avisynth+ plugin.
+
 </body>
 </html>

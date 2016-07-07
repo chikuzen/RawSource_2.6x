@@ -22,7 +22,7 @@
     <ProjectGuid>{971FBA54-37EB-45F9-A116-E97847B7163D}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
-    <ProjectName>RawSource26</ProjectName>
+    <ProjectName>RawSourcePlus</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">

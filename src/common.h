@@ -1,10 +1,10 @@
 /*
-RawSource26 - reads raw video data files
+RawSourcePlus - reads raw video data files
 
-Author: Oka Motofumi (chikuzen.mo at gmail dot com)
+    Author: Oka Motofumi (chikuzen.mo at gmail dot com)
 
-This program is rewriting of RawSource.dll(original author is Ernst Pech)
-for avisynth2.6x/Avisynth+.
+    This program is rewriting of RawSource.dll(original author is Ernst Pech)
+    for Avisynth+.
 */
 
 
@@ -29,8 +29,6 @@ typedef IScriptEnvironment ise_t;
 
 constexpr unsigned MIN_WIDTH = 8;
 constexpr unsigned MIN_HEIGHT = 8;
-constexpr unsigned MAX_WIDTH = 65536;
-constexpr unsigned MAX_HEIGHT = 65536;
 
 
 struct rindex {
@@ -57,16 +55,16 @@ int generate_index(std::vector<i_struct>& index, std::vector<rindex>& rawindex,
                    size_t framesize, int64_t filesize);
 
 void __stdcall
-write_NV420(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
-            ise_t* env) noexcept;
-
-void __stdcall
 write_planar(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
              ise_t* env) noexcept;
 
 void __stdcall
-write_packed(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
-             ise_t* env) noexcept;
+write_packed_chroma_8(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
+                      int count, ise_t* env) noexcept;
+
+void __stdcall
+write_packed_chroma_16(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
+                       int count, ise_t* env) noexcept;
 
 void __stdcall
 write_packed_reorder(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
