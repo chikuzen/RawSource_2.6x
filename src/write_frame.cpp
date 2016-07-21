@@ -25,6 +25,10 @@ write_planar(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
         uint8_t* dstp = dst->GetWritePtr(plane);
         int pitch = dst->GetPitch(plane);
         unsigned read_size = width * height;
+        if (width == pitch) {
+            _read(fd, dstp, read_size);
+            continue;
+        }
         memset(buff, 0, read_size);
         _read(fd, buff, read_size);
         env->BitBlt(dstp, pitch, buff, width, width, height);
@@ -43,9 +47,13 @@ write_packed_chroma(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
     int pitch = dst->GetPitch(PLANAR_Y);
     unsigned read_size = width * height;
 
-    memset(buff, 0, read_size);
-    _read(fd, buff, read_size);
-    env->BitBlt(dstp, pitch, buff, width, width, height);
+    if (width == pitch) {
+        _read(fd, dstp, read_size);
+    } else {
+        memset(buff, 0, read_size);
+        _read(fd, buff, read_size);
+        env->BitBlt(dstp, pitch, buff, width, width, height);
+    }
 
     width = dst->GetRowSize(PLANAR_U) / sizeof(T);
     height = dst->GetHeight(PLANAR_U);
