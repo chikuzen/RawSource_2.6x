@@ -48,7 +48,10 @@ public:
     bool __stdcall GetParity(int n) { return vi.image_type == VideoInfo::IT_TFF; }
     void __stdcall GetAudio(void *buf, int64_t start, int64_t count, ise_t* env) {}
     const VideoInfo& __stdcall GetVideoInfo() { return vi; }
-    int __stdcall SetCacheHints(int cachehints,int frame_range) { return 0; }
+    int __stdcall SetCacheHints(int hints, int)
+    {
+        return hints == CACHE_GET_MTMODE ? MT_SERIALIZED : 0;
+    }
 };
 
 
@@ -274,8 +277,6 @@ AvisynthPluginInit3(ise_t* env, const AVS_Linkage* const vectors)
         "[show]b";
 
     env->AddFunction("RawSourcePlus", args, create_rawsource, nullptr);
-    static_cast<IScriptEnvironment2*>(env)->SetFilterMTMode(
-        "RawSourcePlus", MT_SERIALIZED, true);
 
     return "RawSource for Avisynth+.";
 }
