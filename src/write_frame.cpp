@@ -11,6 +11,7 @@ RawSourcePlus - reads raw video data files
 #include <io.h>
 #include <fcntl.h>
 #include <cstdint>
+#include <emmintrin.h>
 #include "common.h"
 
 
@@ -32,6 +33,28 @@ write_planar(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
         memset(buff, 0, read_size);
         _read(fd, buff, read_size);
         env->BitBlt(dstp, pitch, buff, width, width, height);
+    }
+}
+
+void __stdcall
+write_planar_9(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
+               ise_t* env) noexcept
+{
+    write_planar(fd, dst, buff, order, count, env);
+
+    // convert 9bit planar YUV to 10bit
+    for (const int plane : {PLANAR_Y, PLANAR_U, PLANAR_V}) {
+        const int height = dst->GetHeight(plane);
+        const int rowsize = dst->GetRowSize(plane);
+        const int pitch = dst->GetPitch(plane);
+        uint8_t* dstp = dst->GetWritePtr(plane);
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < rowsize; x += 16) {
+                __m128i* d = reinterpret_cast<__m128i*>(dstp + x);
+                _mm_store_si128(d, _mm_slli_epi16(_mm_load_si128(d), 1));
+            }
+            dstp += pitch;
+        }
     }
 }
 
@@ -91,27 +114,46 @@ write_packed_chroma_16(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
 }
 
 
-void __stdcall
+template <typename T>
+static inline void
 write_packed_reorder(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
                      int count, ise_t* env) noexcept
 {
-    int width = dst->GetRowSize();
+    int rowsize = dst->GetRowSize();
     int height = dst->GetHeight();
-    uint8_t* dstp = dst->GetWritePtr();
-    int pitch = dst->GetPitch();
-    int read_size = width * height;
-    memset(buff, 0, width * height);
-    _read(fd, buff, read_size);
+    int read_bytes = rowsize * height;
+
+    T* buffx = reinterpret_cast<T*>(buff);
+    T* dstp = reinterpret_cast<T*>(dst->GetWritePtr());
+    int pitch = dst->GetPitch() / sizeof(T);
+    rowsize /= sizeof(T);
+
+    memset(buff, 0, read_bytes);
+    _read(fd, buff, read_bytes);
 
     for (int i = 0; i < height; i++) {
-        for (int j = 0, time = width / count; j < time; j++) {
+        for (int j = 0, width = rowsize / count; j < width; j++) {
             for (int k = 0; k < count; k++) {
-                dstp[j * count + k] = buff[j * count + order[k]];
+                dstp[j * count + k] = buffx[j * count + order[k]];
             }
         }
-        buff += width;
+        buffx += rowsize;
         dstp += pitch;
     }
+}
+
+void __stdcall
+write_packed_reorder_8(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
+                       int count, ise_t* env) noexcept
+{
+    write_packed_reorder<uint8_t>(fd, dst, buff, order, count, env);
+}
+
+void __stdcall
+write_packed_reorder_16(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
+                        int count, ise_t* env) noexcept
+{
+    write_packed_reorder<uint16_t>(fd, dst, buff, order, count, env);
 }
 
 
@@ -123,7 +165,7 @@ write_black_frame(PVideoFrame& dst, const VideoInfo& vi) noexcept
 
     if (vi.IsYUY2()) {
         uint16_t* d = reinterpret_cast<uint16_t*>(dstp);
-        std::fill(d, d + size / sizeof(uint16_t), 0x8000);
+        std::fill_n(d, size / sizeof(uint16_t), 0x8000);
         return;
     }
 
@@ -132,28 +174,32 @@ write_black_frame(PVideoFrame& dst, const VideoInfo& vi) noexcept
         return;
     }
 
-    size = dst->GetPitch(PLANAR_U) * dst->GetHeight(PLANAR_U);
-    dstp = dst->GetWritePtr(PLANAR_U);
-    uint8_t* dstv = dst->GetWritePtr(PLANAR_V);
+    if (vi.pixel_type & (VideoInfo::CS_RGBA_TYPE | VideoInfo::CS_YUVA)) {
+        memset(dst->GetWritePtr(PLANAR_A), 0, size);
+    }
+
+    const int planes[] = {
+        vi.IsYUV() ? PLANAR_U : PLANAR_B,
+        vi.IsYUV() ? PLANAR_V : PLANAR_R,
+    };
+
+    size = dst->GetPitch(planes[0]) * dst->GetHeight(planes[1]);
 
     if (vi.ComponentSize() == 1) {
-        memset(dstp, 0x80, size);
-        memset(dstv, 0x80, size);
-        return;
-    }
-    if (vi.ComponentSize() == 2) {
-        uint16_t* d = reinterpret_cast<uint16_t*>(dstp);
+        uint8_t val = vi.IsYUV() ? 0x80 : 0;
+        memset(dst->GetWritePtr(planes[0]), val, size);
+        memset(dst->GetWritePtr(planes[1]), val, size);
+    } else if (vi.ComponentSize() == 2) {
         size /= sizeof(uint16_t);
-        std::fill(d, d + size, 0x8000);
-        d = reinterpret_cast<uint16_t*>(dstv);
-        std::fill(d, d + size, 0x8000);
-        return;
+        uint16_t val = vi.IsYUV() ? 0x8000 : 0;
+        std::fill_n(reinterpret_cast<uint16_t*>(dst->GetWritePtr(planes[0])), size, val);
+        std::fill_n(reinterpret_cast<uint16_t*>(dst->GetWritePtr(planes[1])), size, val);
+    } else {
+        size /= sizeof(float);
+        float val = vi.IsYUV() ? 0.5f : 0.0f;
+        float* d = reinterpret_cast<float*>(dstp);
+        std::fill_n(reinterpret_cast<float*>(dst->GetWritePtr(planes[0])), size, val);
+        std::fill_n(reinterpret_cast<float*>(dst->GetWritePtr(planes[1])), size, val);
     }
-
-    float* d = reinterpret_cast<float*>(dstp);
-    size /= sizeof(float);
-    std::fill(d, d + size, 0.5f);
-    d = reinterpret_cast<float*>(dstv);
-    std::fill(d, d + size, 0.5f);
 }
 

@@ -72,29 +72,29 @@ bool parse_y4m(std::vector<char>& header, VideoInfo& vi,
             i += 2;
             sscanf(buff + i, "%s", ctag);
             if (!strncmp(ctag, "444alpha", 8)) {
-                strcpy(buff, "AYUV");
+                strcpy(buff, "YUVA444");
             } else if (!strncmp(ctag, "444p16", 6)) {
                 strcpy(buff, "YUV444P16");
             } else if (!strncmp(ctag, "444p14", 6)) {
-                strcpy(buff, "YUV444P16");
+                strcpy(buff, "YUV444P14");
             } else if (!strncmp(ctag, "444p12", 6)) {
-                strcpy(buff, "YUV444P16");
+                strcpy(buff, "YUV444P12");
             } else if (!strncmp(ctag, "444p10", 6)) {
-                strcpy(buff, "YUV444P16");
+                strcpy(buff, "YUV444P10");
             } else if (!strncmp(ctag, "444p9", 5)) {
-                strcpy(buff, "YUV444P16");
+                strcpy(buff, "YUV444P9");
             } else if (!strncmp(ctag, "444", 3)) {
                 strcpy(buff, "YUV444P8");
             } else if (!strncmp(ctag, "422p16", 6)) {
                 strcpy(buff, "YUV422P16");
             } else if (!strncmp(ctag, "422p14", 6)) {
-                strcpy(buff, "YUV422P16");
+                strcpy(buff, "YUV422P14");
             } else if (!strncmp(ctag, "422p12", 6)) {
-                strcpy(buff, "YUV422P16");
+                strcpy(buff, "YUV422P12");
             } else if (!strncmp(ctag, "422p10", 6)) {
-                strcpy(buff, "YUV422P16");
+                strcpy(buff, "YUV422P10");
             } else if (!strncmp(ctag, "422p9", 5)) {
-                strcpy(buff, "YUV422P16");
+                strcpy(buff, "YUV422P9");
             } else if (!strncmp(ctag, "422", 3)) {
                 strcpy(buff, "YUV422P8");
             } else if (!strncmp(ctag, "411", 3)) {
@@ -102,19 +102,19 @@ bool parse_y4m(std::vector<char>& header, VideoInfo& vi,
             } else if (!strncmp(ctag, "420p16", 6)) {
                 strcpy(buff, "YUV420P16");
             } else if (!strncmp(ctag, "420p14", 6)) {
-                strcpy(buff, "YUV420P16");
+                strcpy(buff, "YUV420P14");
             } else if (!strncmp(ctag, "420p12", 6)) {
-                strcpy(buff, "YUV420P16");
+                strcpy(buff, "YUV420P12");
             } else if (!strncmp(ctag, "420p10", 6)) {
-                strcpy(buff, "YUV420P16");
+                strcpy(buff, "YUV420P10");
             } else if (!strncmp(ctag, "420p9", 5)) {
-                strcpy(buff, "YUV420P16");
+                strcpy(buff, "YUV420P9");
             } else if (!strncmp(ctag, "420", 3)) {
                 strcpy(buff, "YUV420P8");
             } else if (!strncmp(ctag, "mono16", 6)) {
-                strcpy(buff, "GRAY16");
+                strcpy(buff, "GREY16");
             } else if (!strncmp(ctag, "mono", 4)) {
-                strcpy(buff, "GRAY8");
+                strcpy(buff, "GREY8");
             } else {
                 throw std::runtime_error(header_err);
             }
@@ -191,7 +191,7 @@ void set_rawindex(std::vector<rindex>& rawindex, const char* index,
 }
 
 
-int generate_index(std::vector<i_struct>& index, std::vector<rindex>& rawindex,
+int generate_index(i_struct* index, std::vector<rindex>& rawindex,
                    size_t framesize, int64_t filesize)
 {
     int frame = 0;          //framenumber

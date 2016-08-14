@@ -51,12 +51,16 @@ void set_rawindex(std::vector<rindex>& r, const char* index,
                   int64_t header_offset, int64_t frame_offset,
                   size_t framesize);
 
-int generate_index(std::vector<i_struct>& index, std::vector<rindex>& rawindex,
+int generate_index(i_struct* index, std::vector<rindex>& rawindex,
                    size_t framesize, int64_t filesize);
 
 void __stdcall
 write_planar(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
              ise_t* env) noexcept;
+
+void __stdcall
+write_planar_9(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
+               ise_t* env) noexcept;
 
 void __stdcall
 write_packed_chroma_8(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
@@ -67,8 +71,12 @@ write_packed_chroma_16(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
                        int count, ise_t* env) noexcept;
 
 void __stdcall
-write_packed_reorder(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
-                     int count, ise_t* env) noexcept;
+write_packed_reorder_8(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
+                       int count, ise_t* env) noexcept;
+
+void __stdcall
+write_packed_reorder_16(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
+                        int count, ise_t* env) noexcept;
 
 void __stdcall write_black_frame(PVideoFrame& dst, const VideoInfo& vi) noexcept;
 

@@ -7,48 +7,47 @@
 <body bgcolor="#BED8CB" text="#000000">
 <h1>RawSourcePlus</h1>
 <h3>Loading raw video data from files</h3>
-<p>for Avisynth+ r2003 or greater<br>This filter is only for Avisynth+MT. Avisynth2.6 is not supported.</p>
+<p>for Avisynth+ r2150 or greater<br>This filter is only for Avisynth+MT. Avisynth2.6 is not supported.</p>
 <h4>requirements</h4>
 <ul>
     <li>Windows Vista sp2 or later</li>
-    <li>Avisynth+ r2003 or greater</li>
-    <li>Visual C++ Redistributable for Visual Studio 2015</li>
+    <li>Avisynth+ r2150 or greater</li>
+    <li>Visual C++ Redistributable Packages for Visual Studio 2015</li>
 </ul>
 <h4>How to use</h4>
-<p><code>RawSourcePlus</code> (<var>string &quot;file&quot;, int &quot;width&quot;, 
-  int &quot;height&quot;, string &quot;pixel_type&quot;, int &quot;fpsnum&quot;,
-  int &quot;fpsden&quot;, string &quot;index&quot;, bool &quot;show&quot;</var>)<br>
-</p>
-<p> RawSourcePlus opens a video file which contains 8bit, 9bit, 10bit, 16bit and float YUV444, YUV422, YUV411, YUV420, Gray, or RGB video data.<br>
+<p><code>RawSourcePlus</code> (<var>string "file", int "width", int "height", string "pixel_type", int "fpsnum", int "fpsden", string "index", bool "show"</var>)</p>
+<p> RawSourcePlus opens a video file which contains 8bit, 9bit, 10bit, 16bit or float YUV444, YUV422, YUV411, YUV420, Gray, or RGB video data.<br>
   There are three ways how the positions of the video frame data are calculated:</p>
 <ul>
   <li>a YUV4MPEG2-header is found, width/height/framerate/pixeltype/fieldorder
   is set according to the header data. Only fixed-length FRAME headers without 'm'tag are supported.</li>
   <li>width, height and pixel_type is given as arguments. Then the positions are 
     calculated assuming that only video data is in the file.</li>
-  <li>an &quot;index&quot; string (or file) is given together with width, height, 
+  <li>an "index" string (or file) is given together with width, height, 
     pixel_type. The index string can contain all or partial positions of the frames.</li>
 </ul>
-<p>Supported <var>pixel_type</var>s are:<br>
-  &nbsp;&nbsp;RGB, RGBA, BGR, BGRA, ARGB, ABGR (interleaved RGB without subsampling, resulting in AviSynth's RGB24 or RGB32)<br>
-  &nbsp;&nbsp;YUY2(YUYV), YVYU, UYVY, VYUY (interleaved horizontally subsampled resulting in AviSynth's YUY2)<br>
-  &nbsp;&nbsp;YUV444P8(/I444), YV24 (planar 8bit without subsampling, resulting in AviSynth's YV24)<br>
-  &nbsp;&nbsp;YUV422P8(/I422), YV16 (planar 8bit horizontally subsampled, it is converted to AviSynth's YV16)<br>
-  &nbsp;&nbsp;YUV420P8(/I420/IYUV), YV12 (planar 8bit horizontally and vertically subsampled resulting in AviSynth's YV12)<br>
-  &nbsp;&nbsp;YUV411P8(/I411/Y41B), YV411,  (planar horizontally subsampled, it is converted to AviSynth's YV411)<br>
-  &nbsp;&nbsp;NV12, NV21 (chroma interleaved 8bit horizontally and vertically subsampled resulting in AviSynth's YV12)<br>
-  &nbsp;&nbsp;Y8, GRAY8 (luma only resulting in AviSynth's Y8)
-  &nbsp;&nbsp;YUV444P9, YUV444P10, YUV444P16 (planar 9~16bit without subsampling, resulting in AviSynth+'s YUV444P16)<br>
-  &nbsp;&nbsp;YUV422P9, YUV422P10, YUV422P16 (planar 9~16bit horizontally subsampled, it is converted to AviSynth+'s YUV422P16)<br>
-  &nbsp;&nbsp;P210, P216 (chroma interleaved 16bit horizontally subsampled resulting in AviSynth's YUV422P16)<br>
-  &nbsp;&nbsp;YUV420P9, YUV420P10, YUV420P16 (planar 9~16bit horizontally and vertically subsampled resulting in AviSynth+'s YUV420P16)<br>
-  &nbsp;&nbsp;P010, P016 (chroma interleaved 16bit horizontally and vertically subsampled resulting in AviSynth's YUV420P16)<br>
-  &nbsp;&nbsp;Y16, GRAY16 (luma only 16bit resulting in AviSynth+'s Y16)
-  &nbsp;&nbsp;YUV444PS (planar single precision floating point(32bit) without subsampling, resulting in AviSynth+'s YUV444PS)<br>
-  &nbsp;&nbsp;YUV422PS (planar single precision floating point(32bit) horizontally subsampled, it is converted to AviSynth+'s YUV422PS)<br>
-  &nbsp;&nbsp;YUV420PS (planar single precision floating point(32bit) horizontally and vertically subsampled resulting in AviSynth+'s YUV420PS)<br>
-  &nbsp;&nbsp;Y32, GRAYS (luma only single precision floating point(32bit) resulting in AviSynth+'s Y32)
-  </p>
+<ul>Supported <var>pixel_type</var>s are:
+  <li>RGB, RGBA, BGR, BGRA, ARGB, ABGR (interleaved RGB without subsampling, resulting in AviSynth's RGB24 or RGB32)</li>
+  <li>YUY2(YUYV), YVYU, UYVY, VYUY (interleaved horizontally subsampled resulting in AviSynth's YUY2)</li>
+  <li>YV24, YUV444P8 (planar 8bit without subsampling, resulting in AviSynth's YV24)</li>
+  <li>YV16, YUV422P8 (planar 8bit horizontally subsampled, it is converted to AviSynth's YV16)</li>
+  <li>YV12, I420, IYUV, YUV420P8 (planar 8bit horizontally and vertically subsampled resulting in AviSynth's YV12)</li>
+  <li>YV411, YUV411P8, Y41B (planar horizontally subsampled, it is converted to AviSynth's YV411)</li>
+  <li>NV12, NV21 (chroma interleaved 8bit horizontally and vertically subsampled, those are converted to AviSynth's YV12)</li>
+  <li>Y8, GRAY8 (luma only resulting in AviSynth's Y8)</li><br>
+  <li>RGB48, RGBA64, BGR48, BGRA64, ARGB64, ABGR64 (interleaved RGB without subsampling, resulting in AviSynth+'s RGB48 or RGB64)</li>
+  <li>YUV444P9, YUV444P10, YUV444P12, YUV444P14, YUV444P16, YUV444PS (planar 9~16bit or float without subsampling, resulting in AviSynth+'s YUV444P10/12/14/16/S)</li>
+  <li>YUV422P9, YUV422P10, YUV422P12, YUV422P14, YUV422P16, YUV422PS (planar 9~16bit or float horizontally subsampled, resulting in AviSynth+'s YUV422P10/12/14/16/S)</li>
+  <li>YUV420P9, YUV420P10, YUV420P12, YUV420P14, YUV420P16, YUV420PS (planar 9~16bit or float horizontally and vertically subsampled resulting in AviSynth+'s YUV420P10/12/14/16/S)</li>
+  <li>P210, P216 (chroma interleaved 16bit horizontally subsampled, those are converted to AviSynth+'s YUV422P16)</li>
+  <li>P010, P016 (chroma interleaved 16bit horizontally and vertically subsampled, those are converted to AviSynth+'s YUV420P16)</li>
+  <li>Y10, Y12, Y14, Y16, Y32, GREY16, GREYS (luma only 10~16bit or float resulting in AviSynth+'s Y10/12/14/16/32)</li>
+  <li>GBRP, GBRP10, GBRP12, GBRP14, GBRP16, GBRPS (planar 8~16bit or float RGB without subsampling, resulting in Avisynth+'s RGBP/10/12/14/16/S)</li>
+  <li>GBRAP, GBRAP10, GBRAP12, GBRAP14, GBRAP16, GBRAPS (planar 8~16bit or float RGB with alpha, resulting in Avisynth+'s RGBAP/10/12/14/16/S)</li>
+  <li>YUVA444, YUVA444P10, YUVA444P12, YUVA444P14, YUVA444P16, YUVA444PS (planar 8~16bit or float YUV444 with alpha, resulting in AviSynth+'s YUVA444/P10/P12/P14/P16/PS)</li>
+  <li>YUVA422, YUVA422P10, YUVA422P12, YUVA422P14, YUVA422P16, YUVA422PS (planar 8~16bit or float YUV422 with alpha, resulting in AviSynth+'s YUVA422/P10/P12/P14/P16/PS)</li>
+  <li>YUVA420, YUVA420P10, YUVA420P12, YUVA420P14, YUVA420P16, YUVA420PS (planar 8~16bit or float YUV420 with alpha, resulting in AviSynth+'s YUVA420/P10/P12/P14/P16/PS)</li>
+</ul>
 <p>The default value of framerate is 25fps, you can change it with specified 'fpsnum' and 'fpsden' if you need (e.g. for NTSC-material).</p>
 <p>With <var>show</var>=true the actually used byteposition for that frame is displayed, 
   followed by:<br>
@@ -68,7 +67,8 @@
 <table border="1">
   <tr> 
     <td> 
-      <pre>RawSourcePlus(&quot;d:\src6_625.raw&quot;,720,576,&quot;BGRA&quot;) # really a raw file<br>                                            # if you are unsure about the pixel_type, simply try out all possible values.</pre>
+      <pre>RawSourcePlus(&quot;d:\src6_625.raw&quot;,720,576,&quot;BGRA&quot;) # really a raw file
+      # if you are unsure about the pixel_type, simply try out all possible values.</pre>
     </td>
   </tr>
 </table>
@@ -184,6 +184,6 @@ You don't have to set it yourself.</p>
 <h4>modified by Oka Motofumi, 2011-06-14</h4>
 <p>
 Version 2016-07-07 - Modified RawSource26 to Avisynth+ plugin.
-
+Version 2016-08-14 - Update for Avisynth+ r2150 or later.
 </body>
 </html>
