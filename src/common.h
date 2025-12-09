@@ -11,8 +11,10 @@ RawSourcePlus - reads raw video data files
 #ifndef RAWSOURCE_COMMON_H
 #define RAWSOURCE_COMMON_H
 
-
-#include <cstring>
+#include <cstdint>
+#include <cstdio>
+#include <string>
+#include <format>
 #include <vector>
 #include <stdexcept>
 #define WIN32_LEAN_AND_MEAN
@@ -25,65 +27,68 @@ RawSourcePlus - reads raw video data files
 #pragma warning(disable: 4996)
 
 
-typedef IScriptEnvironment ise_t;
-
-constexpr unsigned MIN_WIDTH = 8;
-constexpr unsigned MIN_HEIGHT = 8;
-
-
 struct rindex {
     int number;
     int64_t bytepos;
+    rindex() : number(0), bytepos(0) {}
     rindex(int x, int64_t y) : number(x), bytepos(y) {}
 };
 
 struct i_struct {
     int64_t index;
     char type; //Key, Delta, Bigdelta
-    i_struct() : index(0), type(0) {}
 };
 
+using ise_t = IScriptEnvironment;
 
-bool parse_y4m(std::vector<char>& header, VideoInfo& vi,
-               int64_t& header_offset, int64_t& frame_offset);
+using write_frame_t
+    = void (*)(FILE*, PVideoFrame&, uint8_t*, int*, int, ise_t*) noexcept;
 
-void set_rawindex(std::vector<rindex>& r, const char* index,
+constexpr unsigned MIN_WIDTH = 8;
+constexpr unsigned MIN_HEIGHT = 8;
+
+#define Y4M_STREAM_MAGIC "YUV4MPEG2";
+#define Y4M_FRAME_MAGIC "FRAME";
+
+
+void parse_y4m(std::string& header, VideoInfo& vi, std::string& pix_type);
+
+void set_rawindex(std::vector<rindex>& r, const std::string& index,
                   int64_t header_offset, int64_t frame_offset,
                   size_t framesize);
 
 int generate_index(i_struct* index, std::vector<rindex>& rawindex,
                    size_t framesize, int64_t filesize);
 
-void __stdcall
-write_planar(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
-             ise_t* env) noexcept;
+void write_planar(FILE* file, PVideoFrame& dst, uint8_t* buff,
+    int* order, int count, ise_t* env) noexcept;
 
-void __stdcall
-write_planar_9(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
-               ise_t* env) noexcept;
+void write_planar_9(FILE* file, PVideoFrame& dst, uint8_t* buff,
+    int* order, int count, ise_t* env) noexcept;
 
-void __stdcall
-write_packed_chroma_8(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
-                      int count, ise_t* env) noexcept;
+void write_packed_chroma_8(FILE* file, PVideoFrame& dst, uint8_t* buff,
+    int* order, int count, ise_t* env) noexcept;
 
-void __stdcall
-write_packed_chroma_16(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
-                       int count, ise_t* env) noexcept;
+void write_packed_chroma_16(FILE* file, PVideoFrame& dst, uint8_t* buff,
+    int* order, int count, ise_t* env) noexcept;
 
-void __stdcall
-write_packed_reorder_8(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
-                       int count, ise_t* env) noexcept;
+void write_packed_reorder_8(FILE* file, PVideoFrame& dst, uint8_t* buff,
+    int* order, int count, ise_t* env) noexcept;
 
-void __stdcall
-write_packed_reorder_16(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
-                        int count, ise_t* env) noexcept;
+void write_packed_reorder_16(FILE* file, PVideoFrame& dst, uint8_t* buff,
+    int* order, int count, ise_t* env) noexcept;
 
-void __stdcall write_black_frame(PVideoFrame& dst, const VideoInfo& vi) noexcept;
+void write_black_frame(PVideoFrame& dst, const VideoInfo& vi) noexcept;
 
-
-static inline void validate(bool cond, const char* msg)
+template <typename T>
+static inline void validate(bool cond, T msg)
 {
     if (cond) throw std::runtime_error(msg);
 }
+
+char* fgetsRLF(char* buf, int mc, FILE* f);
+
+void split(const std::string& str, std::vector<std::string>& v,
+    const char* separator) noexcept;
 
 #endif //RAWSOURCE_COMMON_H

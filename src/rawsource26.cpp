@@ -8,8 +8,7 @@
 */
 
 
-#include <io.h>
-#include <fcntl.h>
+#include <format>
 #include <malloc.h>
 #include <algorithm>
 #include <cinttypes>
@@ -23,28 +22,23 @@
 class RawSource : public IClip {
 
     VideoInfo vi;
-    int fileHandle;
+    FILE* file;
     int64_t fileSize;
     int order[4];
     int col_count;
     bool show;
-
     uint8_t* rawbuf;
     i_struct* index;
-
-    void setProcess(const char* pix_type);
-
-    void(__stdcall *writeDestFrame)(
-        int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
-        ise_t* env);
+    void setProcess(std::string& pix_type);
+    write_frame_t writeDestFrame;
 
 public:
-    RawSource(const char* source, const int width, const int height,
-              const char* pix_type, const int fpsnum, const int fpsden,
-              const char* index, const bool show, ise_t* env);
-    PVideoFrame __stdcall GetFrame(int n, ise_t *env);
+    RawSource(const std::string& source, const int width, const int height,
+              const std::string& pix_type, const int fpsnum, const int fpsden,
+              const std::string& index, const bool show, ise_t* env);
+    ~RawSource() { fclose(file); }
 
-    ~RawSource() { _close(fileHandle); }
+    PVideoFrame __stdcall GetFrame(int n, ise_t *env);
     bool __stdcall GetParity(int n) { return vi.image_type == VideoInfo::IT_TFF; }
     void __stdcall GetAudio(void *buf, int64_t start, int64_t count, ise_t* env) {}
     const VideoInfo& __stdcall GetVideoInfo() { return vi; }
@@ -55,16 +49,15 @@ public:
 };
 
 
-void RawSource::setProcess(const char* pix_type)
+void RawSource::setProcess(std::string& pix_type)
 {
     using std::make_tuple;
     constexpr int Y = PLANAR_Y, U = PLANAR_U, V = PLANAR_V;
     constexpr int G = PLANAR_G, B = PLANAR_B, R = PLANAR_R, A = PLANAR_A;
     constexpr int X = 99999999;
 
-    typedef void (__stdcall *write_frame_t)(
-        int, PVideoFrame&, uint8_t*, int*, int, ise_t*);
-    typedef std::tuple<int, int, int, int, int, int, write_frame_t> pixel_format_t;
+    using pixel_format_t
+        = std::tuple<int, int, int, int, int, int, write_frame_t> ;
 
     std::unordered_map<std::string, pixel_format_t> table;
 
@@ -175,6 +168,7 @@ void RawSource::setProcess(const char* pix_type)
 
     table["Y8"]         = make_tuple(VideoInfo::CS_Y8,          Y, X, X, X, 1, write_planar);
     table["GREY8"]      = make_tuple(VideoInfo::CS_Y8,          Y, X, X, X, 1, write_planar);
+    table["GREY9"]      = make_tuple(VideoInfo::CS_Y8,          Y, X, X, X, 1, write_planar_9);
     table["Y10"]        = make_tuple(VideoInfo::CS_Y10,         Y, X, X, X, 1, write_planar);
     table["Y12"]        = make_tuple(VideoInfo::CS_Y12,         Y, X, X, X, 1, write_planar);
     table["Y14"]        = make_tuple(VideoInfo::CS_Y14,         Y, X, X, X, 1, write_planar);
@@ -185,8 +179,14 @@ void RawSource::setProcess(const char* pix_type)
 
     auto key = std::string(pix_type);
     std::transform(key.begin(), key.end(), key.begin(), ::toupper);
-
-    std::tie(vi.pixel_type, order[0], order[1], order[2], order[3], col_count, writeDestFrame) = table[key];
+    auto val = table[key];
+    vi.pixel_type = std::get<0>(val);
+    order[0] = std::get<1>(val);
+    order[1] = std::get<2>(val);
+    order[2] = std::get<3>(val);
+    order[3] = std::get<4>(val);
+    col_count = std::get<5>(val);
+    writeDestFrame = std::get<6>(val);
 
     validate(vi.pixel_type == 0, "Invalid pixel type. Supported types are bellows.:\n"
         "RGB, RGBA, BGR, BGRA, ARGB, ABGR, RGB48, BGR48, RGBA64, BGRA64, ARGB64, ABGR64,\n"
@@ -203,37 +203,44 @@ void RawSource::setProcess(const char* pix_type)
 }
 
 
-RawSource::RawSource(const char *source, const int width, const int height,
-                     const char *ptype, const int fpsnum, const int fpsden,
-                     const char *a_index, const bool s, ise_t* env) : show(s)
+RawSource::RawSource(const std::string& source, const int width, const int height,
+          const std::string& ptype, const int fpsnum, const int fpsden,
+          const std::string& a_index, const bool s, ise_t* env) : show(s)
 {
-    fileHandle = _open(source, _O_BINARY | _O_RDONLY);
-    validate(fileHandle == -1, "Cannot open videofile.");
-
-    fileSize = _filelengthi64(fileHandle);
+    file = fopen(source.c_str(), "rb");
+    validate(!file, std::format("failed to open {}", source));
+    int64_t cur = _ftelli64(file);
+    _fseeki64(file, 0, SEEK_END);
+    fileSize = _ftelli64(file);
+    _fseeki64(file, cur, SEEK_SET);
     validate(fileSize == -1L, "Cannot get videofile length.");
 
-    memset(&vi, 0, sizeof(VideoInfo));
+    std::memset(&vi, 0, sizeof(VideoInfo));
     vi.width = width;
     vi.height = height;
     vi.SetFPS(fpsnum, fpsden);
     vi.SetFieldBased(false);
 
-    char pix_type[16] = {};
-    strcpy(pix_type, ptype);
-
     int64_t header_offset = 0;
     int64_t frame_offset = 0;
+    std::string pix_type;
 
-    if (strlen(a_index) == 0) { //use header if valid else width, height, pixel_type from AVS are used
-        std::vector<char> read_buff(256, 0);
-        char* data = read_buff.data();
-        _read(fileHandle, data, read_buff.size()); //read some bytes and test on header
-        if (parse_y4m(read_buff, vi, header_offset, frame_offset)) {
-            strcpy(pix_type, data);
+    if (a_index.length() == 0) { //use header if valid else width, height, pixel_type from AVS are used
+        char buf[256] = { 0 };
+        fread(buf, 1, 10, file);
+        std::string header(buf);
+        if (header == "YUV4MPEG2 ") {
+            header = fgetsRLF(buf, 256, file);
+            validate(header.length() > 254, "too large Y4M header.");
+            parse_y4m(header, vi, pix_type);
+            header = fgetsRLF(buf, 256, file);
+            validate(header != "FRAME", std::format("unsupported frame header. {}", header));
+            frame_offset = 6;
+            header_offset = _ftelli64(file);
         }
     }
 
+    if (pix_type == "") pix_type = ptype;
     setProcess(pix_type);
 
     size_t framesize = vi.width * vi.height * vi.BitsPerPixel() / 8;
@@ -270,8 +277,7 @@ RawSource::RawSource(const char *source, const int width, const int height,
 PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
 {
     auto dst = env->NewVideoFrame(vi);
-
-    if (_lseeki64(fileHandle, index[n].index, SEEK_SET) == -1L) {
+    if (_fseeki64(file, index[n].index, SEEK_SET) != 0) {
         // black frame with message
         write_black_frame(dst, vi);
         env->ApplyMessage(&dst, vi, "failed to seek file!", vi.width,
@@ -279,12 +285,11 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
         return dst;
     }
 
-    writeDestFrame(fileHandle, dst, rawbuf, order, col_count, env);
+    writeDestFrame(file, dst, rawbuf, order, col_count, env);
 
     if (show) { //output debug info
-        char info[64];
-        sprintf(info, "%d : %" PRIi64 " %c", n, index[n].index, index[n].type);
-        env->ApplyMessage(&dst, vi, info, vi.width / 2, 0xFFFFFF, 0, 0);
+        auto info = std::format("{} : {} {}", n, index[n].index, index[n].type);
+        env->ApplyMessage(&dst, vi, info.c_str(), vi.width / 2, 0xFFFFFF, 0, 0);
     }
 
     return dst;
@@ -293,34 +298,29 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
 
 AVSValue __cdecl create_rawsource(AVSValue args, void* user_data, ise_t* env)
 {
-    char buff[128] = {};
-
     try {
         validate(!args[0].Defined(), "No source specified");
 
-        const char *source = args[0].AsString();
+        std::string source(args[0].AsString());
         const int width = args[1].AsInt(720);
         const int height = args[2].AsInt(576);
-        const char *pix_type = args[3].AsString("YUV420P8");
+        std::string pix_type(args[3].AsString("YUV420P8"));
         const int fpsnum = args[4].AsInt(25);
         const int fpsden = args[5].AsInt(1);
-        const char *index = args[6].AsString("");
+        std::string index(args[6].AsString(""));
         const bool show = args[7].AsBool(false);
 
-        if (width < MIN_WIDTH || height < MIN_HEIGHT) {
-            snprintf(buff, 127, "width and height need to be %u x %u or higher.",
-                     MIN_WIDTH, MIN_HEIGHT);
-            throw std::runtime_error(buff);
-        }
-
-        validate(strlen(pix_type) > 15, "pixel_type is too long.");
+        validate(width < MIN_WIDTH || height < MIN_HEIGHT,
+            std::format("width and height need to be {} x {} or higher.",
+                MIN_WIDTH, MIN_HEIGHT));
+        validate(pix_type.length() > 15, "pixel_type is too long.");
         validate(fpsnum < 1 || fpsden < 1,
-                 "fpsnum and fpsden need to be 1 or higher.");
+            "fpsnum and fpsden need to be 1 or higher.");
 
         return new RawSource(source, width, height, pix_type, fpsnum, fpsden,
                              index, show, env);
 
-    } catch (std::runtime_error& e) {
+    } catch (std::exception& e) {
         env->ThrowError("RawSourcePlus: %s", e.what());
     }
     return 0;

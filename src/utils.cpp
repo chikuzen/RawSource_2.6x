@@ -8,181 +8,198 @@ RawSourcePlus - reads raw video data files
 */
 
 
-#include <cstdio>
-#include <cinttypes>
+#include <algorithm>
+#include <unordered_map>
+#include <tuple>
+#include <cstring>
 #include "common.h"
 
 
-bool parse_y4m(std::vector<char>& header, VideoInfo& vi,
-               int64_t& header_offset, int64_t& frame_offset)
+char* fgetsRLF(char* buf, int mc, FILE* f)
+{
+    if (!fgets(buf, mc, f)) {
+        return nullptr;
+    }
+    size_t len = strlen(buf);
+    if (buf[len - 1] == '\n') {
+        buf[len - 1] = '\0';
+    }
+    return buf;
+}
+
+void split(const std::string& str, std::vector<std::string>& dst,
+    const char* separator) noexcept
+{
+    size_t offset = 0;
+    std::string sep(separator);
+    size_t length = sep.length();
+    while (true) {
+        auto pos = str.find(sep, offset);
+        if (pos == std::string::npos) {
+            auto t = str.substr(offset);
+            if (t != "") {
+                dst.push_back(t);
+            }
+            break;
+        }
+        auto t = str.substr(offset, pos - offset);
+        if (t != "") {
+            dst.push_back(t);
+        }
+        offset = pos + length;
+    }
+}
+
+static void
+createY4MFormatMap(std::unordered_map<std::string, std::string>& fmtMap) noexcept
+{
+    fmtMap["420JPEG"]  = "YUV420P8";
+    fmtMap["420MPEG2"] = "YUV420P8";
+    fmtMap["420PALDV"] = "YUV420P8";
+    fmtMap["420P9"]    = "YUV420P9";
+    fmtMap["420P10"]   = "YUV420P10";
+    fmtMap["420P12"]   = "YUV420P12";
+    fmtMap["420P14"]   = "YUV420P14";
+    fmtMap["420P16"]   = "YUV420P16";
+    fmtMap["422P9"]    = "YUV422P9";
+    fmtMap["422P10"]   = "YUV422P10";
+    fmtMap["422P12"]   = "YUV422P12";
+    fmtMap["422P14"]   = "YUV422P14";
+    fmtMap["422P16"]   = "YUV422P16";
+    fmtMap["444P9"]    = "YUV444P9";
+    fmtMap["444P10"]   = "YUV444P10";
+    fmtMap["444P12"]   = "YUV444P12";
+    fmtMap["444P14"]   = "YUV444P14";
+    fmtMap["444P16"]   = "YUV444P16";
+    fmtMap["420"]      = "YUV420P8";
+    fmtMap["422"]      = "YUV422P8";
+    fmtMap["444"]      = "YUV444P8";
+    fmtMap["444ALPHA"] = "YUVA444";
+    fmtMap["411"]      = "YUV420P8";
+    fmtMap["MONO"]     = "GREY8";
+    fmtMap["MONO9"]    = "GREY9";
+    fmtMap["MONO10"]   = "Y10";
+    fmtMap["MONO12"]   = "Y12";
+    fmtMap["MONO14"]   = "Y14";
+    fmtMap["MONO16"]   = "Y16";
+}
+
+
+void parse_y4m(std::string& header, VideoInfo& vi, std::string& pix_type)
 {
     const char* header_err = "YUV4MPEG2 header error.";
     const char* unsupported = "This file's YUV4MPEG2 HEADER is unsupported.";
 
-    const char* Y4M_STREAM_MAGIC = "YUV4MPEG2";
-    const char* Y4M_FRAME_MAGIC = "FRAME";
-    constexpr size_t st_magic_len = 9;
     constexpr size_t fr_magic_len = 5;
-
-    char* buff = header.data();
-    const size_t buffsize = header.size();
-
-    if (strncmp(buff, Y4M_STREAM_MAGIC, st_magic_len)) {
-        return false;
-    }
+    std::unordered_map<std::string, std::string> fmtMap;
+    createY4MFormatMap(fmtMap);
 
     vi.height = 0;
     vi.width = 0;
-    strcpy(buff, "YUV420P8");
+    std::vector<std::string> params;
+    split(header, params, " ");
+    std::string altcolor;
+    std::vector<std::string> v;
 
-    unsigned int numerator = 0;
-    unsigned int denominator = 0;
-    char ctag[16] = {0};
+    for (const auto& p : params) {
+        if (p[0] == 'W') {
+            vi.width = std::stoi(p.substr(1));
+            continue;
 
-    int64_t i;
-    for (i = st_magic_len; i < buffsize && buff[i] != '\n'; ++i) {
-        if (!strncmp(buff + i, " W", 2)) {
-            i += 2;
-            sscanf(buff + i, "%d", &vi.width);
-        }
+        } else if (p[0] == 'H') {
+            vi.height = std::stoi(p.substr(1));
+            continue;
 
-        if (!strncmp(buff + i, " H", 2)) {
-            i += 2;
-            sscanf(buff + i, "%d", &vi.height);
-        }
-
-        if (!strncmp(buff + i, " I", 2)) {
-            i += 2;
-            validate(buff[i] == 'm', unsupported);
-            if (buff[i] == 't') {
+        } else if (p[0] == 'I') {
+            validate(p[1] == 'm', unsupported);
+            if (p[1] == 't') {
                 vi.image_type = VideoInfo::IT_TFF;
-            } else if (buff[i] == 'b') {
+            } else if (p[1] == 'b') {
                 vi.image_type = VideoInfo::IT_BFF;
             }
-        }
+            continue;
 
-        if (!strncmp(buff + i, " F", 2)) {
-            i += 2;
-            sscanf(buff + i, "%u:%u", &numerator, &denominator);
-            validate(numerator == 0 || denominator == 0, header_err);
-            vi.SetFPS(numerator, denominator);
-        }
+        } else if (p[0] == 'F') {
+            split(p.substr(1), v, ":");
 
-        if (!strncmp(buff + i, " C", 2)) {
-            i += 2;
-            sscanf(buff + i, "%s", ctag);
-            if (!strncmp(ctag, "444alpha", 8)) {
-                strcpy(buff, "YUVA444");
-            } else if (!strncmp(ctag, "444p16", 6)) {
-                strcpy(buff, "YUV444P16");
-            } else if (!strncmp(ctag, "444p14", 6)) {
-                strcpy(buff, "YUV444P14");
-            } else if (!strncmp(ctag, "444p12", 6)) {
-                strcpy(buff, "YUV444P12");
-            } else if (!strncmp(ctag, "444p10", 6)) {
-                strcpy(buff, "YUV444P10");
-            } else if (!strncmp(ctag, "444p9", 5)) {
-                strcpy(buff, "YUV444P9");
-            } else if (!strncmp(ctag, "444", 3)) {
-                strcpy(buff, "YUV444P8");
-            } else if (!strncmp(ctag, "422p16", 6)) {
-                strcpy(buff, "YUV422P16");
-            } else if (!strncmp(ctag, "422p14", 6)) {
-                strcpy(buff, "YUV422P14");
-            } else if (!strncmp(ctag, "422p12", 6)) {
-                strcpy(buff, "YUV422P12");
-            } else if (!strncmp(ctag, "422p10", 6)) {
-                strcpy(buff, "YUV422P10");
-            } else if (!strncmp(ctag, "422p9", 5)) {
-                strcpy(buff, "YUV422P9");
-            } else if (!strncmp(ctag, "422", 3)) {
-                strcpy(buff, "YUV422P8");
-            } else if (!strncmp(ctag, "411", 3)) {
-                strcpy(buff, "YUV411P8");
-            } else if (!strncmp(ctag, "420p16", 6)) {
-                strcpy(buff, "YUV420P16");
-            } else if (!strncmp(ctag, "420p14", 6)) {
-                strcpy(buff, "YUV420P14");
-            } else if (!strncmp(ctag, "420p12", 6)) {
-                strcpy(buff, "YUV420P12");
-            } else if (!strncmp(ctag, "420p10", 6)) {
-                strcpy(buff, "YUV420P10");
-            } else if (!strncmp(ctag, "420p9", 5)) {
-                strcpy(buff, "YUV420P9");
-            } else if (!strncmp(ctag, "420", 3)) {
-                strcpy(buff, "YUV420P8");
-            } else if (!strncmp(ctag, "mono16", 6)) {
-                strcpy(buff, "GREY16");
-            } else if (!strncmp(ctag, "mono", 4)) {
-                strcpy(buff, "GREY8");
-            } else {
-                throw std::runtime_error(header_err);
+            int num = std::stoi(v[0]);
+            int den = std::stoi(v[1]);
+            validate(num < 1 || den < 1, header_err);
+            vi.SetFPS(num, den);
+            v.clear();
+            continue;
+
+        } else if (p[0] == 'C') {
+            auto key = p.substr(1);
+            std::transform(key.begin(), key.end(), key.begin(), ::toupper);
+            pix_type = fmtMap.at(key);
+            continue;
+
+        } else if (p[0] == 'X') {
+            if (p.find("YSCSS=") == 1) {
+                auto key = p.substr(7);
+                std::transform(key.begin(), key.end(), key.begin(), ::toupper);
+                altcolor = fmtMap.at(key);
             }
         }
     }
 
-    validate(!numerator || !denominator || !vi.width || !vi.height, header_err);
+    validate(!vi.fps_numerator || !vi.fps_denominator || !vi.width
+        || !vi.height, header_err);
 
-    ++i;
-
-    validate(strncmp(buff + i, Y4M_FRAME_MAGIC, fr_magic_len) != 0, header_err);
-
-    header_offset = i;
-
-    i += fr_magic_len;
-
-    while (i < buffsize && buff[i] != '\n') ++i;
-
-    frame_offset = i - header_offset + 1;
-    header_offset += frame_offset;
-
-    return true;
+    if (pix_type == "") {
+        if (altcolor != "") {
+            pix_type = altcolor;
+        } else {
+            pix_type = "YUV420P8";
+        }
+    }
 }
 
 
 
-void set_rawindex(std::vector<rindex>& rawindex, const char* index,
+void set_rawindex(std::vector<rindex>& rawindex, const std::string& index,
                   int64_t header_offset, int64_t frame_offset, size_t framesize)
 {
     rawindex.reserve(2);
 
-    if (strlen(index) == 0) {
+    if (index.length() == 0) {
         rawindex.emplace_back(0, header_offset);
         rawindex.emplace_back(1, header_offset + frame_offset + framesize);
         return;
     }
 
-    std::vector<char> read_buff;
-    const char * pos = strchr(index, '.');
-    if (pos != nullptr) { //assume indexstring is a filename
-        FILE* indexfile = fopen(index, "r");
-        validate(!indexfile, "Cannot open indexfile.");
-        fseek(indexfile, 0, SEEK_END);
-        read_buff.resize(ftell(indexfile) + 1, 0);
-        fseek(indexfile, 0, SEEK_SET);
-        fread(read_buff.data(), 1, read_buff.size() - 1, indexfile);
-        fclose(indexfile);
+    std::vector<std::string> index_list;
+    std::vector<std::string> tmp;
+
+    if (index.find(".") != std::string::npos) { //assume indexstring is a filename
+        FILE* fp = fopen(index.c_str(), "r");
+        validate(!fp, std::format("failed to open index file {}.", index));
+        char buf[1024];
+        std::string str;
+        while (fgetsRLF(buf, 1024, fp)) {
+            str = buf;
+            split(str, index_list, " ");
+        }
+        if (fp) fclose(fp);
     } else {
-        read_buff.resize(strlen(index) + 1, 0);
-        strcpy(read_buff.data(), index);
+        if (index.find("\n") != std::string::npos) {
+            split(index, tmp, "\n");
+        } else {
+            tmp.push_back(index);
+        }
+        for (const auto& i : tmp) {
+            split(i, index_list, " ");
+        }
+        tmp.clear();
     }
 
-    //read all framenr:bytepos pairs
-    const char* seps = " \n";
-    for (char* token = strtok(read_buff.data(), seps);
-            token != nullptr;
-            token = strtok(nullptr, seps)) {
-        int num1 = -1;
-        int64_t num2 = -1;
-        char* p_del = strchr(token, ':');
-        if (!p_del)
-            break;
-        sscanf(token, "%d", &num1);
-        sscanf(p_del + 1, "%" SCNi64, &num2);
-
-        if ((num1 < 0) || (num2 < 0))
-            break;
-        rawindex.emplace_back(num1, num2);
+    for (const auto& idx : index_list) {
+        split(idx, tmp, ":");
+        int number = std::stoi(tmp[0]);
+        int64_t bytepos = std::stoll(tmp[1]);
+        if (number < 0 || bytepos < 0) break;
+        rawindex.emplace_back(number, bytepos);
     }
 
     validate(rawindex.size() == 0 || rawindex[0].number != 0,
@@ -211,14 +228,14 @@ int generate_index(i_struct* index, std::vector<rindex>& rawindex,
         index[frame].index = bytepos;
 
         if ((p_ri < rimax) && (rawindex[p_ri].number <= frame)) {
-            p_ri++;
+            ++p_ri;
             big_steps = 1;
         }
-        frame++;
+        ++frame;
 
         if ((p_ri > 0) && (rawindex[p_ri - 1].number + big_steps * big_frame_step == frame)) {
             bytepos = rawindex[p_ri - 1].bytepos + big_delta * big_steps;
-            big_steps++;
+            ++big_steps;
             index[frame].type = 'B';
         } else {
             if (rawindex[p_ri].number == frame) {
@@ -254,4 +271,3 @@ int generate_index(i_struct* index, std::vector<rindex>& rawindex,
     }
     return frame;
 }
-

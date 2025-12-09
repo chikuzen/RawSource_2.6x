@@ -8,16 +8,12 @@ RawSourcePlus - reads raw video data files
 */
 
 
-#include <io.h>
-#include <fcntl.h>
-#include <cstdint>
 #include <emmintrin.h>
 #include "common.h"
 
 
-void __stdcall
-write_planar(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
-             ise_t* env) noexcept
+void write_planar(FILE* file, PVideoFrame& dst, uint8_t* buff,
+    int* order, int count, ise_t* env) noexcept
 {
     for (int i = 0; i < count; i++) {
         int plane = order[i];
@@ -25,25 +21,26 @@ write_planar(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
         int height = dst->GetHeight(plane);
         uint8_t* dstp = dst->GetWritePtr(plane);
         int pitch = dst->GetPitch(plane);
-        unsigned read_size = width * height;
+        size_t read_size = width * height;
         if (width == pitch) {
-            _read(fd, dstp, read_size);
+            fread(dstp, 1, read_size, file);
             continue;
         }
         memset(buff, 0, read_size);
-        _read(fd, buff, read_size);
+        fread(buff, 1, read_size, file);
         env->BitBlt(dstp, pitch, buff, width, width, height);
     }
 }
 
-void __stdcall
-write_planar_9(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
-               ise_t* env) noexcept
+void write_planar_9(FILE* file, PVideoFrame& dst, uint8_t* buff,
+    int* order, int count, ise_t* env) noexcept
 {
-    write_planar(fd, dst, buff, order, count, env);
+    write_planar(file, dst, buff, order, count, env);
 
     // convert 9bit planar YUV to 10bit
-    for (const int plane : {PLANAR_Y, PLANAR_U, PLANAR_V}) {
+    const int planes[] = {PLANAR_Y, PLANAR_U, PLANAR_V, PLANAR_A};
+    for (int p = 0; p < count; ++p) {
+        const int plane = planes[p];
         const int height = dst->GetHeight(plane);
         const int rowsize = dst->GetRowSize(plane);
         const int pitch = dst->GetPitch(plane);
@@ -60,21 +57,21 @@ write_planar_9(int fd, PVideoFrame& dst, uint8_t* buff, int* order, int count,
 
 
 template <typename T>
-static inline void __stdcall
-write_packed_chroma(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
-    int count, ise_t* env) noexcept
+static inline void
+write_packed_chroma(FILE* file, PVideoFrame& dst, uint8_t* buff,
+    int* order, int count, ise_t* env) noexcept
 {
     int width = dst->GetRowSize(PLANAR_Y);
     int height = dst->GetHeight(PLANAR_Y);
     uint8_t* dstp = dst->GetWritePtr(PLANAR_Y);
     int pitch = dst->GetPitch(PLANAR_Y);
-    unsigned read_size = width * height;
+    size_t read_size = width * height;
 
     if (width == pitch) {
-        _read(fd, dstp, read_size);
+        fread(dstp, 1, read_size, file);
     } else {
-        memset(buff, 0, read_size);
-        _read(fd, buff, read_size);
+        std::memset(buff, 0, read_size);
+        fread(buff, 1, read_size, file);
         env->BitBlt(dstp, pitch, buff, width, width, height);
     }
 
@@ -87,7 +84,7 @@ write_packed_chroma(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
     T* buff_uv = reinterpret_cast<T*>(buff);
 
     memset(buff, 0, read_size);
-    _read(fd, buff_uv, read_size);
+    fread(buff, 1, read_size, file);
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             dstp1[x] = buff_uv[2 * x];
@@ -100,28 +97,28 @@ write_packed_chroma(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
 }
 
 void __stdcall
-write_packed_chroma_8(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
+write_packed_chroma_8(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
                       int count, ise_t* env) noexcept
 {
-    write_packed_chroma<uint8_t>(fd, dst, buff, order, count, env);
+    write_packed_chroma<uint8_t>(file, dst, buff, order, count, env);
 }
 
 void __stdcall
-write_packed_chroma_16(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
+write_packed_chroma_16(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
                        int count, ise_t* env) noexcept
 {
-    write_packed_chroma<uint16_t>(fd, dst, buff, order, count, env);
+    write_packed_chroma<uint16_t>(file, dst, buff, order, count, env);
 }
 
 
 template <typename T>
 static inline void
-write_packed_reorder(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
-                     int count, ise_t* env) noexcept
+write_packed_reorder(FILE* file, PVideoFrame& dst, uint8_t* buff,
+    int* order, int count, ise_t* env) noexcept
 {
     int rowsize = dst->GetRowSize();
     int height = dst->GetHeight();
-    int read_bytes = rowsize * height;
+    size_t read_bytes = rowsize * height;
 
     T* buffx = reinterpret_cast<T*>(buff);
     T* dstp = reinterpret_cast<T*>(dst->GetWritePtr());
@@ -129,7 +126,7 @@ write_packed_reorder(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
     rowsize /= sizeof(T);
 
     memset(buff, 0, read_bytes);
-    _read(fd, buff, read_bytes);
+    fread(buff, 1, read_bytes, file);
 
     for (int i = 0; i < height; i++) {
         for (int j = 0, width = rowsize / count; j < width; j++) {
@@ -142,23 +139,20 @@ write_packed_reorder(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
     }
 }
 
-void __stdcall
-write_packed_reorder_8(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
-                       int count, ise_t* env) noexcept
+void write_packed_reorder_8(FILE* file, PVideoFrame& dst, uint8_t* buff,
+    int* order, int count, ise_t* env) noexcept
 {
-    write_packed_reorder<uint8_t>(fd, dst, buff, order, count, env);
+    write_packed_reorder<uint8_t>(file, dst, buff, order, count, env);
 }
 
-void __stdcall
-write_packed_reorder_16(int fd, PVideoFrame& dst, uint8_t* buff, int* order,
-                        int count, ise_t* env) noexcept
+void write_packed_reorder_16(FILE* file, PVideoFrame& dst, uint8_t* buff,
+    int* order, int count, ise_t* env) noexcept
 {
-    write_packed_reorder<uint16_t>(fd, dst, buff, order, count, env);
+    write_packed_reorder<uint16_t>(file, dst, buff, order, count, env);
 }
 
 
-void __stdcall
-write_black_frame(PVideoFrame& dst, const VideoInfo& vi) noexcept
+void write_black_frame(PVideoFrame& dst, const VideoInfo& vi) noexcept
 {
     uint8_t* dstp = dst->GetWritePtr();
     size_t size = dst->GetPitch() * dst->GetHeight();
