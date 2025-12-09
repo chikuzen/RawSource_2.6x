@@ -14,24 +14,28 @@ RawSourcePlus - reads raw video data files
 #include <cstdint>
 #include <cstdio>
 #include <string>
-#include <format>
 #include <vector>
 #include <stdexcept>
-#define WIN32_LEAN_AND_MEAN
-#define VC_EXTRALEAN
-#define NOMINMAX
-#define NOGDI
-#include <windows.h>
+#if defined(_WIN32)
+    #define WIN32_LEAN_AND_MEAN
+    #define VC_EXTRALEAN
+    #define NOMINMAX
+    #define NOGDI
+    #include <windows.h>
+#else
+    #define _FILE_OFFSET_BITS   64;
+    #define _fseeki64   fseek
+#endif
 #include <avisynth.h>
 
 #pragma warning(disable: 4996)
 
 
-struct rindex {
+struct rawindex_t {
     int number;
     int64_t bytepos;
-    rindex() : number(0), bytepos(0) {}
-    rindex(int x, int64_t y) : number(x), bytepos(y) {}
+    rawindex_t() : number(0), bytepos(0) {}
+    rawindex_t(int x, int64_t y) : number(x), bytepos(y) {}
 };
 
 struct i_struct {
@@ -53,12 +57,11 @@ constexpr unsigned MIN_HEIGHT = 8;
 
 void parse_y4m(std::string& header, VideoInfo& vi, std::string& pix_type);
 
-void set_rawindex(std::vector<rindex>& r, const std::string& index,
-                  int64_t header_offset, int64_t frame_offset,
-                  size_t framesize);
+void set_rawindex(std::vector<rawindex_t>& r, const std::string& index,
+    int64_t header_offset, int64_t frame_offset, int64_t framesize);
 
-int generate_index(i_struct* index, std::vector<rindex>& rawindex,
-                   size_t framesize, int64_t filesize);
+int generate_index(i_struct* index, std::vector<rawindex_t>& rawindex,
+    int64_t framesize, int64_t filesize);
 
 void write_planar(FILE* file, PVideoFrame& dst, uint8_t* buff,
     int* order, int count, ise_t* env) noexcept;

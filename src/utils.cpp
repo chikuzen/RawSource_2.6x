@@ -12,6 +12,7 @@ RawSourcePlus - reads raw video data files
 #include <unordered_map>
 #include <tuple>
 #include <cstring>
+#include <format>
 #include "common.h"
 
 
@@ -158,8 +159,8 @@ void parse_y4m(std::string& header, VideoInfo& vi, std::string& pix_type)
 
 
 
-void set_rawindex(std::vector<rindex>& rawindex, const std::string& index,
-                  int64_t header_offset, int64_t frame_offset, size_t framesize)
+void set_rawindex(std::vector<rawindex_t>& rawindex, const std::string& index,
+                  int64_t header_offset, int64_t frame_offset, int64_t framesize)
 {
     rawindex.reserve(2);
 
@@ -208,17 +209,17 @@ void set_rawindex(std::vector<rindex>& rawindex, const std::string& index,
 }
 
 
-int generate_index(i_struct* index, std::vector<rindex>& rawindex,
-                   size_t framesize, int64_t filesize)
+int generate_index(i_struct* index, std::vector<rawindex_t>& rawindex,
+                   int64_t framesize, int64_t filesize)
 {
     int frame = 0;          //framenumber
     int p_ri = 0;           //pointer to raw index
-    int delta = framesize;  //delta between 1 frame
-    int big_delta = 0;      //delta between many e.g. 25 frames
+    int64_t delta = framesize;  //delta between 1 frame
+    int64_t big_delta = 0;      //delta between many e.g. 25 frames
     int big_steps = 0;      //how many big deltas have occured
     int big_frame_step = 0; //how many frames is big_delta for?
     int rimax = rawindex.size() - 1;
-    int maxframe = static_cast<int>(filesize / framesize);
+    int64_t maxframe = filesize / framesize;
 
     //rawindex[1].bytepos - rawindex[0].bytepos;    //current bytepos delta
     int64_t bytepos = rawindex[0].bytepos;

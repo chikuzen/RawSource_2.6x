@@ -7,16 +7,16 @@
     for Avisynth+.
 */
 
-
 #include <format>
-#include <malloc.h>
 #include <algorithm>
-#include <cinttypes>
-#include <string>
 #include <tuple>
 #include <unordered_map>
 #include <filesystem>
 #include <system_error>
+#if defined(_WIN32)
+    #include <io.h>
+    #include <fcntl.h>
+#endif
 #include "common.h"
 
 
@@ -269,12 +269,12 @@ RawSource::RawSource(const std::string& source, const int width, const int heigh
 
     size_t framesize = vi.width * vi.height * vi.BitsPerPixel() / 8;
 
-    int maxframe = static_cast<int>(fileSize / framesize);    //1 = one frame
+    int64_t maxframe = fileSize / framesize;    //1 = one frame
 
     validate(maxframe < 1, "File too small for even one frame.");
 
     //index build using string descriptor
-    std::vector<rindex> rawindex;
+    std::vector<rawindex_t> rawindex;
     set_rawindex(rawindex, a_index, header_offset, frame_offset, framesize);
 
     auto free_buffer = [](void* p, ise_t* e) {
