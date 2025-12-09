@@ -253,20 +253,19 @@ RawSource::RawSource(const std::string& source, const int width, const int heigh
     std::vector<rindex> rawindex;
     set_rawindex(rawindex, a_index, header_offset, frame_offset, framesize);
 
-    auto env2 = static_cast<IScriptEnvironment2*>(env);
     auto free_buffer = [](void* p, ise_t* e) {
-        static_cast<IScriptEnvironment2*>(e)->Free(p);
+        e->Free(p);
         p = nullptr;
     };
 
     //create full index and get number of frames.
-    void* b = env2->Allocate((maxframe + 1) * sizeof(i_struct), 8, AVS_NORMAL_ALLOC);
+    void* b = env->Allocate((maxframe + 1) * sizeof(i_struct), 8, AVS_NORMAL_ALLOC);
     validate(!b, "failed to allocate index array.");
     env->AtExit(free_buffer, b);
     index = reinterpret_cast<i_struct*>(b);
     vi.num_frames = generate_index(index, rawindex, framesize, fileSize);
 
-    b = env2->Allocate(vi.BytesFromPixels(vi.width * vi.height), 64, AVS_NORMAL_ALLOC);
+    b = env->Allocate(vi.BytesFromPixels(vi.width * vi.height), 64, AVS_NORMAL_ALLOC);
     validate(!b, "failed to allocate read buffer.");
     env->AtExit(free_buffer, b);
     rawbuf = reinterpret_cast<uint8_t*>(b);
