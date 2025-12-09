@@ -29,6 +29,8 @@ class RawSource : public IClip {
     int order[4];
     int col_count;
     bool show;
+    size_t frame_offset;
+
     uint8_t* rawbuf;
     i_struct* index;
 
@@ -56,6 +58,16 @@ public:
 void RawSource::openFile(const std::string& fname)
 {
     namespace fs = std::filesystem;
+
+    if (fname == "-") {
+#if defined(_WIN32)
+        validate(_setmode(_fileno(stdin), _O_BINARY) == -1,
+            "failed to set binary mode to stdin.");
+#endif
+        file = stdin;
+        fileSize = -1;
+        return;
+    }
 
     fs::path fpath;
     std::error_code ec;
@@ -235,7 +247,8 @@ void RawSource::setProcess(std::string& pix_type)
 
 RawSource::RawSource(const std::string& source, const int width, const int height,
           const std::string& ptype, const int fpsnum, const int fpsden,
-          const std::string& a_index, const bool s, ise_t* env) : show(s)
+          const std::string& a_index, const bool s, ise_t* env)
+    : show(s), index(nullptr)
 {
     openFile(source);
 
@@ -244,19 +257,22 @@ RawSource::RawSource(const std::string& source, const int width, const int heigh
     vi.height = height;
     vi.SetFPS(fpsnum, fpsden);
     vi.SetFieldBased(false);
+    vi.num_frames = INT_MAX;
 
     int64_t header_offset = 0;
-    int64_t frame_offset = 0;
+    frame_offset = 0;
     std::string pix_type;
 
     if (a_index.length() == 0) { //use header if valid else width, height, pixel_type from AVS are used
         char buf[256] = { 0 };
         fread(buf, 1, 10, file);
         std::string header(buf);
+
         if (header == "YUV4MPEG2 ") {
             header = fgetsRLF(buf, 256, file);
             validate(header.length() > 254, "too large Y4M header.");
             parse_y4m(header, vi, pix_type);
+
             header = fgetsRLF(buf, 256, file);
             validate(header != "FRAME", std::format("unsupported frame header. {}", header));
             frame_offset = 6;
@@ -267,7 +283,21 @@ RawSource::RawSource(const std::string& source, const int width, const int heigh
     if (pix_type == "") pix_type = ptype;
     setProcess(pix_type);
 
-    size_t framesize = vi.width * vi.height * vi.BitsPerPixel() / 8;
+    auto free_buffer = [](void* p, ise_t* e) {
+        e->Free(p);
+        p = nullptr;
+    };
+
+    void* b = env->Allocate(vi.BytesFromPixels(vi.width * vi.height), 64, AVS_NORMAL_ALLOC);
+    validate(!b, "failed to allocate read buffer.");
+    env->AtExit(free_buffer, b);
+    rawbuf = reinterpret_cast<uint8_t*>(b);
+
+    if (fileSize < 1) {
+        return;
+    }
+
+    int64_t framesize = vi.width * vi.height * vi.BitsPerPixel() / 8;
 
     int64_t maxframe = fileSize / framesize;    //1 = one frame
 
@@ -277,30 +307,20 @@ RawSource::RawSource(const std::string& source, const int width, const int heigh
     std::vector<rawindex_t> rawindex;
     set_rawindex(rawindex, a_index, header_offset, frame_offset, framesize);
 
-    auto free_buffer = [](void* p, ise_t* e) {
-        e->Free(p);
-        p = nullptr;
-    };
-
     //create full index and get number of frames.
-    void* b = env->Allocate((maxframe + 1) * sizeof(i_struct), 8, AVS_NORMAL_ALLOC);
+    b = env->Allocate((maxframe + 1) * sizeof(i_struct), 8, AVS_NORMAL_ALLOC);
     validate(!b, "failed to allocate index array.");
     env->AtExit(free_buffer, b);
     index = reinterpret_cast<i_struct*>(b);
     vi.num_frames = generate_index(index, rawindex, framesize, fileSize);
-
-    b = env->Allocate(vi.BytesFromPixels(vi.width * vi.height), 64, AVS_NORMAL_ALLOC);
-    validate(!b, "failed to allocate read buffer.");
-    env->AtExit(free_buffer, b);
-    rawbuf = reinterpret_cast<uint8_t*>(b);
-
 }
 
 
 PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
 {
     auto dst = env->NewVideoFrame(vi);
-    if (_fseeki64(file, index[n].index, SEEK_SET) != 0) {
+
+    if (fileSize > 0 && _fseeki64(file, index[n].index, SEEK_SET) != 0) {
         // black frame with message
         write_black_frame(dst, vi);
         env->ApplyMessage(&dst, vi, "failed to seek file!", vi.width,
@@ -308,9 +328,15 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
         return dst;
     }
 
+    if (fileSize < 0) {
+        if (ftell(file) == 0) return nullptr;
+        if (frame_offset > 0) {
+            fread(rawbuf, 1, frame_offset, file);
+        }
+    }
     writeDestFrame(file, dst, rawbuf, order, col_count, env);
 
-    if (show) { //output debug info
+    if (fileSize > 0 && show) { //output debug info
         auto info = std::format("{} : {} {}", n, index[n].index, index[n].type);
         env->ApplyMessage(&dst, vi, info.c_str(), vi.width / 2, 0xFFFFFF, 0, 0);
     }
@@ -341,7 +367,7 @@ AVSValue __cdecl create_rawsource(AVSValue args, void* user_data, ise_t* env)
             "fpsnum and fpsden need to be 1 or higher.");
 
         return new RawSource(source, width, height, pix_type, fpsnum, fpsden,
-                             index, show, env);
+            index, show, env);
 
     } catch (std::exception& e) {
         env->ThrowError("RawSourcePlus: %s", e.what());

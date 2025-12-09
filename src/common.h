@@ -25,6 +25,7 @@ RawSourcePlus - reads raw video data files
 #else
     #define _FILE_OFFSET_BITS   64;
     #define _fseeki64   fseek
+    #define _ftelli64   ftell
 #endif
 #include <avisynth.h>
 
