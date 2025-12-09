@@ -15,6 +15,8 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <filesystem>
+#include <system_error>
 #include "common.h"
 
 
@@ -29,6 +31,8 @@ class RawSource : public IClip {
     bool show;
     uint8_t* rawbuf;
     i_struct* index;
+
+    void openFile(const std::string& fname);
     void setProcess(std::string& pix_type);
     write_frame_t writeDestFrame;
 
@@ -48,6 +52,32 @@ public:
     }
 };
 
+
+void RawSource::openFile(const std::string& fname)
+{
+    namespace fs = std::filesystem;
+
+    fs::path fpath;
+    std::error_code ec;
+
+#if defined(_WIN32)
+    wchar_t tmp[MAX_PATH * 4] = { 0 };
+    MultiByteToWideChar(CP_UTF8, 0, fname.c_str(), -1, tmp, MAX_PATH * 4);
+    fpath = tmp;
+    if (!fs::exists(fpath, ec)) {
+        MultiByteToWideChar(CP_ACP, 0, fname.c_str(), -1, tmp, MAX_PATH * 4);
+        fpath = tmp;
+        validate(!fs::exists(fpath, ec), std::format("{} is not exists.", fname));
+    }
+    file = _wfopen(tmp, L"rb");
+#else
+    fpath = fname;
+    validate(!fs::exists(fpath, ec), std::format("{} is not exists.", fname));
+    file = fopen(tmp, "rb");
+#endif
+    validate(!file, std::format("failed to open {}.", fname));
+    fileSize = static_cast<int64_t>(fs::file_size(fpath));
+}
 
 void RawSource::setProcess(std::string& pix_type)
 {
@@ -207,13 +237,7 @@ RawSource::RawSource(const std::string& source, const int width, const int heigh
           const std::string& ptype, const int fpsnum, const int fpsden,
           const std::string& a_index, const bool s, ise_t* env) : show(s)
 {
-    file = fopen(source.c_str(), "rb");
-    validate(!file, std::format("failed to open {}", source));
-    int64_t cur = _ftelli64(file);
-    _fseeki64(file, 0, SEEK_END);
-    fileSize = _ftelli64(file);
-    _fseeki64(file, cur, SEEK_SET);
-    validate(fileSize == -1L, "Cannot get videofile length.");
+    openFile(source);
 
     std::memset(&vi, 0, sizeof(VideoInfo));
     vi.width = width;
