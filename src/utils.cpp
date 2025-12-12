@@ -136,7 +136,7 @@ void parse_y4m(std::string& header, VideoInfo& vi, std::string& pix_type,
             split(p.substr(1), v, ":");
             int num = std::stoi(v[0]);
             int den = std::stoi(v[1]);
-            validate(num < 1 || den < 1, header_err);
+            validate(num < 0 || den < 0, header_err);
             props.sarNum = num;
             props.sarDen = den;
             v.clear();
