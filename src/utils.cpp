@@ -88,7 +88,8 @@ createY4MFormatMap(std::unordered_map<std::string, std::string>& fmtMap) noexcep
 }
 
 
-void parse_y4m(std::string& header, VideoInfo& vi, std::string& pix_type)
+void parse_y4m(std::string& header, VideoInfo& vi, std::string& pix_type,
+    props_t& props)
 {
     const char* header_err = "YUV4MPEG2 header error.";
     const char* unsupported = "This file's YUV4MPEG2 HEADER is unsupported.";
@@ -124,7 +125,6 @@ void parse_y4m(std::string& header, VideoInfo& vi, std::string& pix_type)
 
         } else if (p[0] == 'F') {
             split(p.substr(1), v, ":");
-
             int num = std::stoi(v[0]);
             int den = std::stoi(v[1]);
             validate(num < 1 || den < 1, header_err);
@@ -132,10 +132,27 @@ void parse_y4m(std::string& header, VideoInfo& vi, std::string& pix_type)
             v.clear();
             continue;
 
+        } else if (p[0] == 'A') {
+            split(p.substr(1), v, ":");
+            int num = std::stoi(v[0]);
+            int den = std::stoi(v[1]);
+            validate(num < 1 || den < 1, header_err);
+            props.sarNum = num;
+            props.sarDen = den;
+            v.clear();
+            continue;
+
         } else if (p[0] == 'C') {
             auto key = p.substr(1);
             std::transform(key.begin(), key.end(), key.begin(), ::toupper);
             pix_type = fmtMap.at(key);
+            if (key == "420JPEG") {
+                props.chromaLoc = 1;
+            } else if (key == "420MPEG2") {
+                props.chromaLoc = 0;
+            } else if (key == "420PALDV") {
+                props.chromaLoc = 2;
+            }
             continue;
 
         } else if (p[0] == 'X') {
@@ -143,6 +160,32 @@ void parse_y4m(std::string& header, VideoInfo& vi, std::string& pix_type)
                 auto key = p.substr(7);
                 std::transform(key.begin(), key.end(), key.begin(), ::toupper);
                 altcolor = fmtMap.at(key);
+                if (pix_type == "") {
+                    pix_type = altcolor;
+                    if (key == "420JPEG") {
+                        props.chromaLoc = 1;
+                    } else if (key == "420MPEG2") {
+                        props.chromaLoc = 0;
+                    } else if (key == "420PALDV") {
+                        props.chromaLoc = 2;
+                    }
+                }
+            } else if (p.find("COLORRANGE=") == 1) {
+                auto range = p.substr(12);
+                if (range == "FULL") {
+                    props.colRange = 0;
+                } else if (range == "LIMITED") {
+                    props.colRange = 1;
+                }
+            } else if (p.find("COLORPRIMARIES=")) {
+                int cprim = std::stoi(p.substr(16));
+                props.colPrim = cprim;
+            } else if (p.find("COLORMATRIX=")) {
+                int cmat = std::stoi(p.substr(13));
+                props.colMat = cmat;
+            } else if (p.find("TRANSFER=")) {
+                int tr = std::stoi(p.substr(10));
+                props.transfer = tr;
             }
         }
     }
@@ -151,11 +194,7 @@ void parse_y4m(std::string& header, VideoInfo& vi, std::string& pix_type)
         || !vi.height, header_err);
 
     if (pix_type == "") {
-        if (altcolor != "") {
-            pix_type = altcolor;
-        } else {
-            pix_type = "YUV420P8";
-        }
+        pix_type = "YUV420P8";
     }
 }
 

@@ -32,6 +32,7 @@ class RawSource : public IClip {
     int colCount;
     bool show;
     size_t frameOffset;
+    props_t props;
 
     uint8_t* rawbuf;
     i_struct* index;
@@ -48,8 +49,9 @@ class RawSource : public IClip {
 
 public:
     RawSource(const std::string& source, const int width, const int height,
-              const std::string& pix_type, const int fpsnum, const int fpsden,
-              const std::string& index, const bool show, ise_t* env);
+        const std::string& pix_type, const int fpsnum, const int fpsden,
+        const std::string& index, const bool show, const int sarnum,
+        const int sarden, ise_t* env);
     ~RawSource() {
         fclose(file);
         avs_free(rawbuf); rawbuf = nullptr;
@@ -448,7 +450,8 @@ void RawSource::parseFileName(const std::string& fname, std::string& pix_type)
 
 RawSource::RawSource(const std::string& source, const int width, const int height,
     const std::string& ptype, const int fpsnum, const int fpsden,
-    const std::string& a_index, const bool s, ise_t* env)
+    const std::string& a_index, const bool s, const int sarnum, const int sarden,
+    ise_t* env)
     : show(s), rawbuf(nullptr), index(nullptr), shuffleIndex(nullptr),
     be2le(nullptr)
 {
@@ -477,7 +480,7 @@ RawSource::RawSource(const std::string& source, const int width, const int heigh
         if (header == "YUV4MPEG2 ") {
             header = fgetsRLF(buf, 256, file);
             validate(header.length() > 254, "too large Y4M header.");
-            parse_y4m(header, vi, pix_type);
+            parse_y4m(header, vi, pix_type, props);
 
             header = fgetsRLF(buf, 256, file);
             validate(header != "FRAME",
@@ -533,8 +536,8 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
     if (fileSize > 0 && _fseeki64(file, index[n].index, SEEK_SET) != 0) {
         // black frame with message
         write_black_frame(dst, vi);
-        env->ApplyMessage(&dst, vi, "failed to seek file!", vi.width,
-            0xFFFFFF, 0xFFFFFF, 0);
+        env->ApplyMessage(&dst, vi, "failed to seek file!", vi.width / 2,
+            0xFFFFFF, 0, 0);
         return dst;
     }
 
@@ -564,6 +567,26 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
         env->ApplyMessage(&dst, vi, info.c_str(), vi.width / 2, 0xFFFFFF, 0, 0);
     }
 
+    auto map = env->getFramePropsRW(dst);
+    auto at = static_cast<double>(vi.fps_numerator) / vi.fps_denominator * n;
+    env->propSetFloat(map, "_AbsoluteTime", at, 0);
+    env->propSetInt(map, "_DurationNum", vi.fps_numerator, 0);
+    env->propSetInt(map, "_DurationDen", vi.fps_denominator, 0);
+    if (props.sarNum != 0) {
+        env->propSetInt(map, "_SARNum", props.sarNum, 0);
+        env->propSetInt(map, "_SARDen", props.sarDen, 0);
+    }
+    env->propSetInt(map, "_FieldBased", vi.image_type, 0);
+    if (props.colRange != -1) {
+        env->propSetInt(map, "_ColorRange", props.colRange, 0);
+    }
+    if (vi.IsYUV()) {
+        env->propSetInt(map, "_ChromaLocation", props.chromaLoc, 0);
+        env->propSetInt(map, "_Primaries", props.colPrim, 0);
+        env->propSetInt(map, "_Transfer", props.transfer, 0);
+        env->propSetInt(map, "_Matrix", props.colMat, 0);
+    }
+
     return dst;
 }
 
@@ -581,6 +604,8 @@ AVSValue __cdecl create_rawsource(AVSValue args, void* user_data, ise_t* env)
         const int fpsden = args[5].AsInt(1);
         std::string index(args[6].AsString(""));
         const bool show = args[7].AsBool(false);
+        const int sarnum = args[8].AsInt(0);
+        const int sarden = args[9].AsInt(0);
 
         validate(width < MIN_WIDTH || height < MIN_HEIGHT,
             std::format("width and height need to be {} x {} or higher.",
@@ -590,7 +615,7 @@ AVSValue __cdecl create_rawsource(AVSValue args, void* user_data, ise_t* env)
             "fpsnum and fpsden need to be 1 or higher.");
 
         return new RawSource(source, width, height, pix_type, fpsnum, fpsden,
-            index, show, env);
+            index, show, sarnum, sarden, env);
 
     } catch (std::exception& e) {
         env->ThrowError("RawSourcePlus: %s", e.what());
@@ -615,7 +640,9 @@ AvisynthPluginInit3(ise_t* env, const AVS_Linkage* const vectors)
         "[fpsnum]i"
         "[fpsden]i"
         "[index]s"
-        "[show]b";
+        "[show]b"
+        "[sarnum]i"
+        "[sarden]i";
 
     env->AddFunction("RawSourcePlus", args, create_rawsource, nullptr);
 

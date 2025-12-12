@@ -44,6 +44,19 @@ struct i_struct {
     char type; //Key, Delta, Bigdelta
 };
 
+struct props_t {
+    int sarNum;
+    int sarDen;
+    int colRange;
+    int chromaLoc;
+    int colPrim;
+    int transfer;
+    int colMat;
+    props_t() : sarNum(0), sarDen(0), colRange(-1), chromaLoc(0), colPrim(2),
+        transfer(2), colMat(2) { }
+};
+
+
 using ise_t = IScriptEnvironment;
 
 using write_frame_t = void (*)(FILE*, PVideoFrame&, uint8_t*, int*, int,
@@ -56,7 +69,8 @@ constexpr unsigned MIN_HEIGHT = 16;
 #define Y4M_FRAME_MAGIC "FRAME";
 
 
-void parse_y4m(std::string& header, VideoInfo& vi, std::string& pix_type);
+void parse_y4m(std::string& header, VideoInfo& vi, std::string& pix_type,
+    props_t& p);
 
 void set_rawindex(std::vector<rawindex_t>& r, const std::string& index,
     int64_t header_offset, int64_t frame_offset, int64_t framesize);
