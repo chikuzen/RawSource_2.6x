@@ -28,6 +28,7 @@ char* fgetsRLF(char* buf, int mc, FILE* f)
     return buf;
 }
 
+
 void split(const std::string& str, std::vector<std::string>& dst,
     const char* separator) noexcept
 {
@@ -50,6 +51,7 @@ void split(const std::string& str, std::vector<std::string>& dst,
         offset = pos + length;
     }
 }
+
 
 static void
 createY4MFormatMap(std::unordered_map<std::string, std::string>& fmtMap) noexcept
