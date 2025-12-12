@@ -568,7 +568,7 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
     }
 
     auto map = env->getFramePropsRW(dst);
-    auto at = static_cast<double>(vi.fps_numerator) / vi.fps_denominator * n;
+    auto at = static_cast<double>(vi.fps_denominator) / vi.fps_numerator * n;
     env->propSetFloat(map, "_AbsoluteTime", at, 0);
     env->propSetInt(map, "_DurationNum", vi.fps_numerator, 0);
     env->propSetInt(map, "_DurationDen", vi.fps_denominator, 0);
