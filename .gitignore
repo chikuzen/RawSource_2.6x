@@ -2,7 +2,6 @@ archives/*
 /vs2022/RawSourcePlus/*
 /vs2022/x64/*
 /vs2022/.vs/*
-
 *.opensdf
 *.opendb
 *.psess
@@ -17,3 +16,5 @@ archives/*
 *.avs
 *.exe
 *.db
+*.raw
+*.y4m
