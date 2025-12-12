@@ -534,19 +534,30 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
         // black frame with message
         write_black_frame(dst, vi);
         env->ApplyMessage(&dst, vi, "failed to seek file!", vi.width,
-                          0xFFFFFF, 0xFFFFFF, 0);
+            0xFFFFFF, 0xFFFFFF, 0);
         return dst;
     }
 
+    size_t bufoffset = 0;
     if (fileSize < 0) {
-        if (ftell(file) == 0) return nullptr;
-        if (frameOffset > 0) {
-            fread(rawbuf, 1, frameOffset, file);
+        size_t read = frameOffset;
+        if (read == 0) {
+            read = 64;
+            bufoffset = 64;
+        }
+        if (fread(rawbuf, 1, read, file) != read) {
+            write_black_frame(dst, vi);
+            env->ApplyMessage(&dst, vi,
+                " \n \nstdin is empty.\n"
+                "Please abort and terminate\n"
+                "the application",
+                vi.width * 2 / 5, 0xFFFFFF, 0, 0);
+            return dst;
         }
     }
 
     int* o = shuffleIndex ? reinterpret_cast<int*>(shuffleIndex) : order;
-    writeDestFrame(file, dst, rawbuf, o, colCount, env, be2le);
+    writeDestFrame(file, dst, rawbuf, o, colCount, env, be2le, bufoffset);
 
     if (fileSize > 0 && show) { //output debug info
         auto info = std::format("{} : {} {}", n, index[n].index, index[n].type);

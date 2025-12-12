@@ -14,7 +14,7 @@ RawSourcePlus - reads raw video data files
 template < bool IS_9BITS, bool BIG_ENDIAN, bool IS_PACKED_BGR >
 static AVS_FORCEINLINE void
 write_planar_base(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
-    int count, ise_t* env, const uint8_t* be2le) noexcept
+    int count, ise_t* env, const uint8_t* be2le, size_t bufoffset) noexcept
 {
     const __m256i be2le_idx
         = _mm256_load_si256(reinterpret_cast<const __m256i*>(be2le));
@@ -27,18 +27,20 @@ write_planar_base(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
         int pitch = dst->GetPitch(plane);
         size_t read_size = rowsize * height;
         if (IS_PACKED_BGR) {
-            fread(buff, 1, read_size, file);
+            fread(buff + bufoffset, 1, read_size - bufoffset, file);
             dstp += pitch * (height - 1);
             pitch = -pitch;
             env->BitBlt(dstp, pitch, buff, rowsize, rowsize, height);
         } else {
             if (rowsize == pitch) {
-                fread(dstp, 1, read_size, file);
+                memcpy(dstp, buff, bufoffset);
+                fread(dstp + bufoffset, 1, read_size - bufoffset, file);
             } else {
-                fread(buff, 1, read_size, file);
+                fread(buff + bufoffset, 1, read_size - bufoffset, file);
                 env->BitBlt(dstp, pitch, buff, rowsize, rowsize, height);
             }
         }
+        bufoffset = 0;
         if (BIG_ENDIAN) {
             for (int y = 0; y < height; ++y) {
                 for (int x = 0; x < rowsize; x += 32) {
@@ -67,46 +69,48 @@ write_planar_base(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
 
 
 void write_planar(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
-    int count, ise_t* env, const uint8_t* be2le) noexcept
+    int count, ise_t* env, const uint8_t* be2le, size_t bufoffset) noexcept
 {
     write_planar_base<false, false, false>(file, dst, buff, order, count, env,
-        be2le);
+        be2le, bufoffset);
 }
 
 void write_packed_bgr(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
-    int count, ise_t* env, const uint8_t* be2le) noexcept
+    int count, ise_t* env, const uint8_t* be2le, size_t bufoffset) noexcept
 {
     write_planar_base<false, false, true>(file, dst, buff, order, count, env,
-        be2le);
+        be2le, bufoffset);
 }
 
 
 void write_planar_9(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
-    int count, ise_t* env, const uint8_t* be2le) noexcept
+    int count, ise_t* env, const uint8_t* be2le, size_t bufoffset) noexcept
 {
     write_planar_base<true, false, false>(file, dst, buff, order, count, env,
-        be2le);
+        be2le, bufoffset);
 }
 
 void write_planar_9be(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
-    int count, ise_t* env, const uint8_t* be2le) noexcept
+    int count, ise_t* env, const uint8_t* be2le, size_t bufoffset) noexcept
 {
     write_planar_base<true, true, false>(file, dst, buff, order, count, env,
-        be2le);
+        be2le, bufoffset);
 }
 
 void write_planar_16be(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
     write_planar_base<false, true, false>(file, dst, buff, order, count, env,
-        be2le);
+        be2le, bufoffset);
 }
 
 void write_packed_bgr_16be(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
     write_planar_base<false, true, true>(file, dst, buff, order, count, env,
-        be2le);
+        be2le, bufoffset);
 }
 
 
@@ -161,7 +165,8 @@ proc_chroma<uint8_t>(__m128i& s0, __m128i& s1, __m128i* d0, __m128i* d1)
 template < typename T, bool BIG_ENDIAN >
 static AVS_FORCEINLINE void
 write_packed_chroma(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
     int rowsize = dst->GetRowSize(PLANAR_Y);
     int height = dst->GetHeight(PLANAR_Y);
@@ -170,12 +175,13 @@ write_packed_chroma(FILE* file, PVideoFrame& dst, uint8_t* buff,
     size_t read_bytes = rowsize * height;
 
     if (rowsize == pitch) {
-        fread(dstp, 1, read_bytes, file);
+        memcpy(dstp, buff, bufoffset);
+        fread(dstp + bufoffset, 1, read_bytes - bufoffset, file);
         if (BIG_ENDIAN) {
             convert_be2le_all(dstp, read_bytes, be2le);
         }
     } else {
-        fread(buff, 1, read_bytes, file);
+        fread(buff + bufoffset, 1, read_bytes - bufoffset, file);
         if (BIG_ENDIAN) {
             convert_be2le_all(buff, read_bytes, be2le);
         }
@@ -216,36 +222,40 @@ write_packed_chroma(FILE* file, PVideoFrame& dst, uint8_t* buff,
 }
 
 void write_packed_chroma_8(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
     write_packed_chroma<uint8_t, false>(file, dst, buff, order, count, env,
-        be2le);
+        be2le, bufoffset);
 }
 
 void write_packed_chroma_16(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
     write_packed_chroma<uint16_t, false>(file, dst, buff, order, count, env,
-        be2le);
+        be2le, bufoffset);
 }
 
 void write_packed_chroma_16be(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
     write_packed_chroma<uint16_t, true>(file, dst, buff, order, count, env,
-        be2le);
+        be2le, bufoffset);
 }
 
 template < typename T, bool BIG_ENDIAN >
 static AVS_FORCEINLINE void
 write_packed_rgb_reorder(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
     int rowsize = dst->GetRowSize();
     int height = dst->GetHeight();
     size_t read_bytes = rowsize * height;
 
-    fread(buff, 1, read_bytes, file);
+    fread(buff + bufoffset, 1, read_bytes - bufoffset, file);
 
     if (BIG_ENDIAN) {
         //At first, convert all big endian samples to little endian.
@@ -270,31 +280,35 @@ write_packed_rgb_reorder(FILE* file, PVideoFrame& dst, uint8_t* buff,
 
 
 void write_rgb24(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
     write_packed_rgb_reorder<uint8_t, false>(file, dst, buff, order, count,
-        env, be2le);
+        env, be2le, bufoffset);
 }
 
 
 void write_rgb48(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
     write_packed_rgb_reorder<uint16_t, false>(file, dst, buff, order, count,
-        env, be2le);
+        env, be2le, bufoffset);
 }
 
 void write_rgb48_be(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
     write_packed_rgb_reorder<uint16_t, true>(file, dst, buff, order, count,
-        env, be2le);
+        env, be2le, bufoffset);
 }
 
 template < bool IS_RGB, bool BIG_ENDIAN >
 static AVS_FORCEINLINE void
 write_packed_reorder_base(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
     int rowsize = dst->GetRowSize();
     int height = dst->GetHeight();
@@ -302,7 +316,7 @@ write_packed_reorder_base(FILE* file, PVideoFrame& dst, uint8_t* buff,
     uint8_t* dstp = dst->GetWritePtr();
     size_t read_bytes = rowsize * height;
 
-    fread(buff, 1, read_bytes, file);
+    fread(buff + bufoffset, 1, read_bytes - bufoffset, file);
 
     const __m256i be2le_idx
         = _mm256_load_si256(reinterpret_cast<const __m256i*>(be2le));
@@ -330,37 +344,42 @@ write_packed_reorder_base(FILE* file, PVideoFrame& dst, uint8_t* buff,
 }
 
 void write_packed_reorder(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
     write_packed_reorder_base<false, false>(file, dst, buff, order, count, env,
-        be2le);
+        be2le, bufoffset);
 }
 
 void write_rgba32(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
     write_packed_reorder_base<true, false>(file, dst, buff, order, count, env,
-        be2le);
+        be2le, bufoffset);
 }
 
 void write_rgba64(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
     write_packed_reorder_base<true, false>(file, dst, buff, order, count, env,
-        be2le);
+        be2le, bufoffset);
 }
 
 void write_rgba64_be(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
     write_packed_reorder_base<true, true>(file, dst, buff, order, count, env,
-        be2le);
+        be2le, bufoffset);
 }
 
 template < bool IS_YUYV, bool BIG_ENDIAN >
 static AVS_FORCEINLINE void
 write_planar_from_packed(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
     int rowsize = dst->GetRowSize(PLANAR_Y);
     int height = dst->GetHeight(PLANAR_Y);
@@ -369,8 +388,9 @@ write_planar_from_packed(FILE* file, PVideoFrame& dst, uint8_t* buff,
     uint8_t* dstpY = dst->GetWritePtr(PLANAR_Y);
     uint8_t* dstpU = dst->GetWritePtr(PLANAR_U);
     uint8_t* dstpV = dst->GetWritePtr(PLANAR_V);
+    size_t read_bytes = rowsize * 2 * height;
 
-    fread(buff, 1, rowsize * 2 * height, file);
+    fread(buff + bufoffset, 1, read_bytes - bufoffset, file);
 
     const uint8_t* srcp = buff;
     const __m128i be2le_idx
@@ -432,21 +452,27 @@ write_planar_from_packed(FILE* file, PVideoFrame& dst, uint8_t* buff,
 
 
 void write_y21x(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
-    write_planar_from_packed<true, false>(file, dst, buff, order, count, env, be2le);
+    write_planar_from_packed<true, false>(file, dst, buff, order, count, env,
+        be2le, bufoffset);
 }
 
 void write_uyvy_16(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
-    write_planar_from_packed<false, false>(file, dst, buff, order, count, env, be2le);
+    write_planar_from_packed<false, false>(file, dst, buff, order, count, env,
+        be2le, bufoffset);
 }
 
 void write_uyvy_16be(FILE* file, PVideoFrame& dst, uint8_t* buff,
-    int* order, int count, ise_t* env, const uint8_t* be2le) noexcept
+    int* order, int count, ise_t* env, const uint8_t* be2le,
+    size_t bufoffset) noexcept
 {
-    write_planar_from_packed<false, true>(file, dst, buff, order, count, env, be2le);
+    write_planar_from_packed<false, true>(file, dst, buff, order, count, env,
+        be2le, bufoffset);
 }
 
 template < typename T > static AVS_FORCEINLINE void
@@ -512,7 +538,7 @@ proc_ayuv<uint16_t>(__m128i& s0, __m128i& s1, __m128i& s2, __m128i& s3,
 template < typename T, bool BIG_ENDIAN >
 static AVS_FORCEINLINE void
 write_ayuv_base(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
-    int count, ise_t* env, const uint8_t* be2le) noexcept
+    int count, ise_t* env, const uint8_t* be2le, size_t bufoffset) noexcept
 {
     int rowsize = dst->GetRowSize(PLANAR_Y);
     int height = dst->GetHeight(PLANAR_Y);
@@ -529,7 +555,7 @@ write_ayuv_base(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
     const __m128i be2le_idx
         = _mm_load_si128(reinterpret_cast<const __m128i*>(be2le));
 
-    fread(buff, 1, read_bytes, file);
+    fread(buff + bufoffset, 1, read_bytes - bufoffset, file);
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < rowsize; x += 16) {
@@ -559,21 +585,24 @@ write_ayuv_base(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
 }
 
 void write_ayuv(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
-    int count, ise_t* env, const uint8_t* be2le) noexcept
+    int count, ise_t* env, const uint8_t* be2le, size_t bufoffset) noexcept
 {
-    write_ayuv_base<uint8_t, false>(file, dst, buff, order, count, env, be2le);
+    write_ayuv_base<uint8_t, false>(file, dst, buff, order, count, env, be2le,
+        bufoffset);
 }
 
 void write_ayuv_16(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
-    int count, ise_t* env, const uint8_t* be2le) noexcept
+    int count, ise_t* env, const uint8_t* be2le, size_t bufoffset) noexcept
 {
-    write_ayuv_base<uint16_t, false>(file, dst, buff, order, count, env, be2le);
+    write_ayuv_base<uint16_t, false>(file, dst, buff, order, count, env, be2le,
+        bufoffset);
 }
 
 void write_ayuv_16be(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
-    int count, ise_t* env, const uint8_t* be2le) noexcept
+    int count, ise_t* env, const uint8_t* be2le, size_t bufoffset) noexcept
 {
-    write_ayuv_base<uint16_t, true>(file, dst, buff, order, count, env, be2le);
+    write_ayuv_base<uint16_t, true>(file, dst, buff, order, count, env, be2le,
+        bufoffset);
 }
 void write_black_frame(PVideoFrame& dst, const VideoInfo& vi) noexcept
 {
