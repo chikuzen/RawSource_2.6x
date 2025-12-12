@@ -18,6 +18,7 @@
     #include <fcntl.h>
 #endif
 #include "common.h"
+#include <avs/alignment.h>
 
 
 
@@ -27,9 +28,9 @@ class RawSource : public IClip {
     FILE* file;
     int64_t fileSize;
     int order[4];
-    int col_count;
+    int colCount;
     bool show;
-    size_t frame_offset;
+    size_t frameOffset;
 
     uint8_t* rawbuf;
     i_struct* index;
@@ -42,7 +43,11 @@ public:
     RawSource(const std::string& source, const int width, const int height,
               const std::string& pix_type, const int fpsnum, const int fpsden,
               const std::string& index, const bool show, ise_t* env);
-    ~RawSource() { fclose(file); }
+    ~RawSource() {
+        fclose(file);
+        avs_free(rawbuf); rawbuf = nullptr;
+        avs_free(index); index = nullptr;
+    }
 
     PVideoFrame __stdcall GetFrame(int n, ise_t *env);
     bool __stdcall GetParity(int n) { return vi.image_type == VideoInfo::IT_TFF; }
@@ -219,29 +224,20 @@ void RawSource::setProcess(std::string& pix_type)
     table["Y32"]        = make_tuple(VideoInfo::CS_Y32,         Y, X, X, X, 1, write_planar);
     table["GREYS"]      = make_tuple(VideoInfo::CS_Y32,         Y, X, X, X, 1, write_planar);
 
-    auto key = std::string(pix_type);
-    std::transform(key.begin(), key.end(), key.begin(), ::toupper);
-    auto val = table[key];
-    vi.pixel_type = std::get<0>(val);
-    order[0] = std::get<1>(val);
-    order[1] = std::get<2>(val);
-    order[2] = std::get<3>(val);
-    order[3] = std::get<4>(val);
-    col_count = std::get<5>(val);
-    writeDestFrame = std::get<6>(val);
 
-    validate(vi.pixel_type == 0, "Invalid pixel type. Supported types are bellows.:\n"
-        "RGB, RGBA, BGR, BGRA, ARGB, ABGR, RGB48, BGR48, RGBA64, BGRA64, ARGB64, ABGR64,\n"
-        "GBRP, GBRP10, GBRP12, GBRP14, GBRP16, GBRPS, GBRAP, GBRAP10, GBRAP12, GBRAP14, GBRAP16, GBRAPS,\n"
-        "Y8, GREY8, Y10, Y12, Y14, Y16, GREY16, Y32, GREYS, YUY2, YUYV, UYVY, YVYU, VYUY,\n"
-        "YV24, I444, YUV444P8, YUV444P9, YUV444P10, YUV444P12, YUV444P14, YUV444P16, YUV444PS,\n"
-        "YUVA444P8, YUVA444P10, YUVA444P12, YUVA444P14, YUVA444P16, YUVA444PS,\n"
-        "YV16, I422, YUV422P8, YUV422P9, YUV422P10, YUV422P12, YUV422P14, YUV422P16, YUV422PS,\n"
-        "YUVA422P8, YUVA422P10, YUVA422P12, YUVA422P14, YUVA422P16, YUVA422PS,\n"
-        "YV12, I420, IYUV, YUV420P8, YUV420P9, YUV420P10, YUV420P12, YUV420P14, YUV420P16, YUV420PS,\n"
-        "YUVA420P8, YUVA420P10, YUVA420P12, YUVA420P14, YUVA420P16, YUVA420PS,\n"
-        "YV411, Y41B, NV12, NV21, P210, P216, P010, P016");
-
+    try {
+        auto val = t.at(pix_type);
+        vi.pixel_type = std::get<0>(val);
+        order[0] = std::get<1>(val);
+        order[1] = std::get<2>(val);
+        order[2] = std::get<3>(val);
+        order[3] = std::get<4>(val);
+        colCount = std::get<5>(val);
+        writeDestFrame = std::get<6>(val);
+    } catch (std::out_of_range& e) {
+        throw std::runtime_error(
+            std::format("'{}' is unsupported pixel type.", pix_type));
+    }
 }
 
 
@@ -260,8 +256,8 @@ RawSource::RawSource(const std::string& source, const int width, const int heigh
     vi.num_frames = INT_MAX;
 
     int64_t header_offset = 0;
-    frame_offset = 0;
-    std::string pix_type;
+    frameOffset = 0;
+    std::string pix_type(ptype);
 
     if (a_index.length() == 0) { //use header if valid else width, height, pixel_type from AVS are used
         char buf[256] = { 0 };
@@ -274,30 +270,26 @@ RawSource::RawSource(const std::string& source, const int width, const int heigh
             parse_y4m(header, vi, pix_type);
 
             header = fgetsRLF(buf, 256, file);
-            validate(header != "FRAME", std::format("unsupported frame header. {}", header));
-            frame_offset = 6;
+            validate(header != "FRAME",
+                std::format("unsupported frame header. {}", header));
+            frameOffset = 6;
             header_offset = _ftelli64(file);
         }
     }
 
-    if (pix_type == "") pix_type = ptype;
+    if (pix_type == "") pix_type = "YUV420P8";
+    std::transform(pix_type.begin(), pix_type.end(), pix_type.begin(), ::toupper);
     setProcess(pix_type);
 
-    auto free_buffer = [](void* p, ise_t* e) {
-        e->Free(p);
-        p = nullptr;
     };
 
-    void* b = env->Allocate(vi.BytesFromPixels(vi.width * vi.height), 64, AVS_NORMAL_ALLOC);
-    validate(!b, "failed to allocate read buffer.");
-    env->AtExit(free_buffer, b);
-    rawbuf = reinterpret_cast<uint8_t*>(b);
+    int64_t framesize = vi.width * vi.height * vi.BitsPerPixel() / 8;
+    rawbuf = reinterpret_cast<uint8_t*>(avs_malloc(framesize, 64));
+    validate(!rawbuf, "failed to allocate read buffer.");
 
     if (fileSize < 1) {
         return;
     }
-
-    int64_t framesize = vi.width * vi.height * vi.BitsPerPixel() / 8;
 
     int64_t maxframe = fileSize / framesize;    //1 = one frame
 
@@ -305,13 +297,11 @@ RawSource::RawSource(const std::string& source, const int width, const int heigh
 
     //index build using string descriptor
     std::vector<rawindex_t> rawindex;
-    set_rawindex(rawindex, a_index, header_offset, frame_offset, framesize);
+    set_rawindex(rawindex, a_index, header_offset, frameOffset, framesize);
 
     //create full index and get number of frames.
-    b = env->Allocate((maxframe + 1) * sizeof(i_struct), 8, AVS_NORMAL_ALLOC);
-    validate(!b, "failed to allocate index array.");
-    env->AtExit(free_buffer, b);
-    index = reinterpret_cast<i_struct*>(b);
+    index = reinterpret_cast<i_struct*>(avs_malloc((maxframe + 1) * sizeof(i_struct), 8));
+    validate(!index, "failed to allocate index array.");
     vi.num_frames = generate_index(index, rawindex, framesize, fileSize);
 }
 
@@ -330,8 +320,8 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
 
     if (fileSize < 0) {
         if (ftell(file) == 0) return nullptr;
-        if (frame_offset > 0) {
-            fread(rawbuf, 1, frame_offset, file);
+        if (frameOffset > 0) {
+            fread(rawbuf, 1, frameOffset, file);
         }
     }
     writeDestFrame(file, dst, rawbuf, order, col_count, env);
@@ -353,7 +343,7 @@ AVSValue __cdecl create_rawsource(AVSValue args, void* user_data, ise_t* env)
         std::string source(args[0].AsString());
         const int width = args[1].AsInt(720);
         const int height = args[2].AsInt(576);
-        std::string pix_type(args[3].AsString("YUV420P8"));
+        std::string pix_type(args[3].AsString(""));
         const int fpsnum = args[4].AsInt(25);
         const int fpsden = args[5].AsInt(1);
         std::string index(args[6].AsString(""));

@@ -46,11 +46,11 @@ struct i_struct {
 
 using ise_t = IScriptEnvironment;
 
-using write_frame_t
-    = void (*)(FILE*, PVideoFrame&, uint8_t*, int*, int, ise_t*) noexcept;
+using write_frame_t = void (*)(FILE*, PVideoFrame&, uint8_t*, int*, int,
+    ise_t*, const uint8_t* be2le) noexcept;
 
-constexpr unsigned MIN_WIDTH = 8;
-constexpr unsigned MIN_HEIGHT = 8;
+constexpr unsigned MIN_WIDTH = 16;
+constexpr unsigned MIN_HEIGHT = 16;
 
 #define Y4M_STREAM_MAGIC "YUV4MPEG2";
 #define Y4M_FRAME_MAGIC "FRAME";
