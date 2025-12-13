@@ -17,9 +17,12 @@
 #if defined(_WIN32)
     #include <io.h>
     #include <fcntl.h>
+    #include <avs/alignment.h>
+#else
+    #include <avisynth/avs/alignment.h>
 #endif
 #include "common.h"
-#include <avs/alignment.h>
+
 
 
 
@@ -222,7 +225,7 @@ void RawSource::setProcess(std::string& pix_type)
     t["YUV444P14BE"] = mt(VI::CS_YUV444P14, Y, U, V, X, 3, write_planar_16be);
     t["YUV444P16BE"] = mt(VI::CS_YUV444P16, Y, U, V, X, 3, write_planar_16be);
 
-    t["YUVA444P8"]    = mt(VI::CS_YUVA444,    Y, U, V, A, 4, write_planar);
+    t["YUVA444"]    = mt(VI::CS_YUVA444,    Y, U, V, A, 4, write_planar);
     t["YUVA444P9"]    = mt(VI::CS_YUVA444P10, Y, U, V, A, 4, write_planar_9);
     t["YUVA444P10"]   = mt(VI::CS_YUVA444P10, Y, U, V, A, 4, write_planar);
     t["YUVA444P12"]   = mt(VI::CS_YUVA444P12, Y, U, V, A, 4, write_planar);
@@ -247,7 +250,7 @@ void RawSource::setProcess(std::string& pix_type)
     t["YUV422P14BE"] = mt(VI::CS_YUV422P14, Y, U, V, X, 3, write_planar_16be);
     t["YUV422P16BE"] = mt(VI::CS_YUV422P16, Y, U, V, X, 3, write_planar_16be);
 
-    t["YUVA422P8"]    = mt(VI::CS_YUVA422,    Y, U, V, A, 4, write_planar);
+    t["YUVA422"]    = mt(VI::CS_YUVA422,    Y, U, V, A, 4, write_planar);
     t["YUVA422P9"]    = mt(VI::CS_YUVA422P10, Y, U, V, A, 4, write_planar_9);
     t["YUVA422P10"]   = mt(VI::CS_YUVA422P10, Y, U, V, A, 4, write_planar);
     t["YUVA422P12"]   = mt(VI::CS_YUVA422P12, Y, U, V, A, 4, write_planar);
@@ -262,7 +265,6 @@ void RawSource::setProcess(std::string& pix_type)
     t["YV12"]        = mt(VI::CS_YV12,      Y, V, U, X, 3, write_planar);
     t["I420"]        = mt(VI::CS_I420,      Y, U, V, X, 3, write_planar);
     t["IYUV"]        = mt(VI::CS_I420,      Y, U, V, X, 3, write_planar);
-    t["YUV420P8"]    = mt(VI::CS_I420,      Y, U, V, X, 3, write_planar);
     t["YUV420P9"]    = mt(VI::CS_YUV420P10, Y, U, V, X, 3, write_planar_9);
     t["YUV420P10"]   = mt(VI::CS_YUV420P10, Y, U, V, X, 3, write_planar);
     t["YUV420P12"]   = mt(VI::CS_YUV420P12, Y, U, V, X, 3, write_planar);
@@ -274,7 +276,7 @@ void RawSource::setProcess(std::string& pix_type)
     t["YUV420P14BE"] = mt(VI::CS_YUV420P14, Y, U, V, X, 3, write_planar_16be);
     t["YUV420P16BE"] = mt(VI::CS_YUV420P16, Y, U, V, X, 3, write_planar_16be);
 
-    t["YUVA420P8"]    = mt(VI::CS_YUVA420,    Y, U, V, A, 4, write_planar);
+    t["YUVA420"]    = mt(VI::CS_YUVA420,    Y, U, V, A, 4, write_planar);
     t["YUVA420P9"]    = mt(VI::CS_YUVA420P10, Y, U, V, A, 4, write_planar_9);
     t["YUVA420P10"]   = mt(VI::CS_YUVA420P10, Y, U, V, A, 4, write_planar);
     t["YUVA420P12"]   = mt(VI::CS_YUVA420P12, Y, U, V, A, 4, write_planar);
@@ -667,4 +669,3 @@ AvisynthPluginInit3(ise_t* env, const AVS_Linkage* const vectors)
 
     return "RawSource for Avisynth+.";
 }
-
