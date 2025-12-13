@@ -51,7 +51,7 @@ public:
     RawSource(const std::string& source, const int width, const int height,
         const std::string& pix_type, const int fpsnum, const int fpsden,
         const std::string& index, const bool show, const int sarnum,
-        const int sarden, ise_t* env);
+        const int sarden, const int frames, ise_t* env);
     ~RawSource() {
         fclose(file);
         avs_free(rawbuf); rawbuf = nullptr;
@@ -453,6 +453,11 @@ void RawSource::parseFileName(const std::string& fname, std::string& pix_type)
         if (n.find("sd=") == 0) {
             int sd = std::stoi(n.substr(3));
             if (sd > -1) props.sarDen = sd;
+            continue;
+        }
+        if (n.find("fr=") == 0) {
+            int fr = std::stoi(n.substr(3));
+            if (fr > 0) vi.num_frames = fr;
         }
     }
 }
@@ -460,7 +465,7 @@ void RawSource::parseFileName(const std::string& fname, std::string& pix_type)
 RawSource::RawSource(const std::string& source, const int width, const int height,
     const std::string& ptype, const int fpsnum, const int fpsden,
     const std::string& a_index, const bool s, const int sarnum, const int sarden,
-    ise_t* env)
+    const int frames, ise_t* env)
     : show(s), rawbuf(nullptr), index(nullptr), shuffleIndex(nullptr),
     be2le(nullptr)
 {
@@ -471,7 +476,7 @@ RawSource::RawSource(const std::string& source, const int width, const int heigh
     vi.height = height;
     vi.SetFPS(fpsnum, fpsden);
     vi.SetFieldBased(false);
-    vi.num_frames = INT_MAX;
+    vi.num_frames = frames;
 
     int64_t header_offset = 0;
     frameOffset = 0;
@@ -615,6 +620,7 @@ AVSValue __cdecl create_rawsource(AVSValue args, void* user_data, ise_t* env)
         const bool show = args[7].AsBool(false);
         const int sarnum = args[8].AsInt(0);
         const int sarden = args[9].AsInt(0);
+        const int frames = args[10].AsInt(INT_MAX);
 
         validate(width < MIN_WIDTH || height < MIN_HEIGHT,
             std::format("width and height need to be {} x {} or higher.",
@@ -622,9 +628,12 @@ AVSValue __cdecl create_rawsource(AVSValue args, void* user_data, ise_t* env)
         validate(pix_type.length() > 15, "pixel_type is too long.");
         validate(fpsnum < 1 || fpsden < 1,
             "fpsnum and fpsden need to be 1 or higher.");
+        validate(sarnum < 0 || sarden < 0,
+            "sarnum and sarden need to be 0 or higher.");
+        validate(frames < 1, "frames need to be 1 or higher.");
 
         return new RawSource(source, width, height, pix_type, fpsnum, fpsden,
-            index, show, sarnum, sarden, env);
+            index, show, sarnum, sarden, frames, env);
 
     } catch (std::exception& e) {
         env->ThrowError("RawSourcePlus: %s", e.what());
@@ -651,7 +660,8 @@ AvisynthPluginInit3(ise_t* env, const AVS_Linkage* const vectors)
         "[index]s"
         "[show]b"
         "[sarnum]i"
-        "[sarden]i";
+        "[sarden]i"
+        "[frames]i";
 
     env->AddFunction("RawSourcePlus", args, create_rawsource, nullptr);
 
