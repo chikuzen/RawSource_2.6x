@@ -445,6 +445,15 @@ void RawSource::parseFileName(const std::string& fname, std::string& pix_type)
             int fd = std::stoi(n.substr(3));
             if (fd > 0) vi.fps_denominator = fd;
         }
+        if (n.find("sn=") == 0) {
+            int sn = std::stoi(n.substr(3));
+            if (sn > -1) props.sarNum = sn;
+            continue;
+        }
+        if (n.find("sd=") == 0) {
+            int sd = std::stoi(n.substr(3));
+            if (sd > -1) props.sarDen = sd;
+        }
     }
 }
 
@@ -572,12 +581,12 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
     env->propSetFloat(map, "_AbsoluteTime", at, 0);
     env->propSetInt(map, "_DurationNum", vi.fps_numerator, 0);
     env->propSetInt(map, "_DurationDen", vi.fps_denominator, 0);
-    if (props.sarNum != 0) {
+    if (props.sarNum > -1 && props.sarDen > -1) {
         env->propSetInt(map, "_SARNum", props.sarNum, 0);
         env->propSetInt(map, "_SARDen", props.sarDen, 0);
     }
     env->propSetInt(map, "_FieldBased", vi.image_type, 0);
-    if (props.colRange != -1) {
+    if (props.colRange > -1) {
         env->propSetInt(map, "_ColorRange", props.colRange, 0);
     }
     if (vi.IsYUV()) {
