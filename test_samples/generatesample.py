@@ -224,6 +224,7 @@ if __name__ == "__main__":
     fmtdict = get_dict(sys.argv[1:])
     if len(fmtdict) == 0:
         print("No target. Processing ends.", file=sys.stderr)
+        exit(1)
 
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     os.makedirs("rawfiles", exist_ok=True)
@@ -235,7 +236,6 @@ if __name__ == "__main__":
         
 
         for ptype, pfmt in fmtdict.items():
-            swap = get_swap(ptype)
             out = f"rawfiles/sample_pt={ptype}_w={w}_h={h}_fn={fn}_fd={fd}.{ext}"
             cmdline = f"ffmpeg -hide_banner -y -i {src} -pix_fmt {pfmt} " \
                 + f"-f {ffmt} {out}"
@@ -245,7 +245,7 @@ if __name__ == "__main__":
             print("-----------------------------------------------------")
 
             subprocess.run(cmdline, shell=True)
-            line = f'#RawSourcePlus("./{out}"){swap}\n'
+            line = f'#RawSourcePlus("./{out}"){get_swap(ptype)}\n'
             lines.append(line)
 
         avs.write(''.join(lines))
