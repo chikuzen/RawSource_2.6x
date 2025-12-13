@@ -56,9 +56,9 @@ void split(const std::string& str, std::vector<std::string>& dst,
 static void
 createY4MFormatMap(std::unordered_map<std::string, std::string>& fmtMap) noexcept
 {
-    fmtMap["420JPEG"]  = "YUV420P8";
-    fmtMap["420MPEG2"] = "YUV420P8";
-    fmtMap["420PALDV"] = "YUV420P8";
+    fmtMap["420JPEG"]  = "I420";
+    fmtMap["420MPEG2"] = "I420";
+    fmtMap["420PALDV"] = "I420";
     fmtMap["420P9"]    = "YUV420P9";
     fmtMap["420P10"]   = "YUV420P10";
     fmtMap["420P12"]   = "YUV420P12";
@@ -74,12 +74,12 @@ createY4MFormatMap(std::unordered_map<std::string, std::string>& fmtMap) noexcep
     fmtMap["444P12"]   = "YUV444P12";
     fmtMap["444P14"]   = "YUV444P14";
     fmtMap["444P16"]   = "YUV444P16";
-    fmtMap["420"]      = "YUV420P8";
+    fmtMap["420"]      = "I420";
     fmtMap["422"]      = "YUV422P8";
     fmtMap["444"]      = "YUV444P8";
     fmtMap["444ALPHA"] = "YUVA444";
-    fmtMap["411"]      = "YUV420P8";
-    fmtMap["MONO"]     = "GREY8";
+    fmtMap["411"]      = "YUV411";
+    fmtMap["MONO"]     = "Y8";
     fmtMap["MONO9"]    = "GREY9";
     fmtMap["MONO10"]   = "Y10";
     fmtMap["MONO12"]   = "Y12";
@@ -194,7 +194,7 @@ void parse_y4m(std::string& header, VideoInfo& vi, std::string& pix_type,
         || !vi.height, header_err);
 
     if (pix_type == "") {
-        pix_type = "YUV420P8";
+        pix_type = "I420";
     }
 }
 

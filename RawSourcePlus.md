@@ -34,17 +34,17 @@ There are four ways how the positions of the video frame data are calculated:
 		int "sarden": specify sar denominator to set frame property. default value is 0.
 		int "frames": specify maximum number of frames. useful for pipe input. default value is 2147483647 (INT_MAX).
 
-	1. a file name containing the parameters like "xxx_w=1440_h=1080_pt=YUV420P10_fn=30000_fd=1001_sn=4_sd=3_fr=100.raw".
+	2. a file name containing the parameters like "xxx_w=1440_h=1080_pt=YUV420P10_fn=30000_fd=1001_sn=4_sd=3_fr=100.raw".
 		_w=WWW_h=HHH: specify width and height. WWW and HHH must be integers.
 		_pt=XXX: specify pixel_type. XXX must be a string.
 		_fn=NNN_fd=DDD: specify fpsnum and fpsden. NNN and DDD must be integers.
 		_sn=NNN_sd=DDD: specify sarnum and sarden. NNN and DDD must be integers.
 		_fr=FFF: specify frames. FFF must be an integer.
 
-	1. a YUV4MPEG2-header is found, width / height / framerate / pixeltype / fieldorder is set according to the header data.
+	3. a YUV4MPEG2-header is found, width / height / framerate / pixeltype / fieldorder is set according to the header data.
 	although, if sar / colorrange / colorprimaries / transfer / colormatrix are specified, they will be set as frame properties. Only fixed-length FRAME headers without 'm'tag are supported.
 
-	1. an "index" string (or file) is given together with width, height, pixel_type. The index string can contain all or partial positions of the frames.
+	4. an "index" string (or file) is given together with width, height, pixel_type. The index string can contain all or partial positions of the frames.
 
 some examples.
 ```
