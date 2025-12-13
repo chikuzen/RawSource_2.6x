@@ -81,7 +81,7 @@ def format_dict():
         "YUV444P14BE": "yuv444p14be",
         "YUV444P16BE": "yuv444p16be",
 
-        "YUVA444P8" : "yuva444p",
+        "YUVA444" : "yuva444p",
         "YUVA444P9": "yuva444p9le",
         "YUVA444P10": "yuva444p10le",
         "YUVA444P12": "yuva444p12le",
@@ -116,15 +116,19 @@ def format_dict():
 
         "YV12": "yuv420p",
         "I420": "yuv420p",
-        "YUV420P8" : "yuv420p",
+        "IYUV": "yuv420p",
         "YUV420P9": "yuv420p9le",
         "YUV420P10": "yuv420p10le",
+        "YUV420P12": "yuv420p12le",
+        "YUV420P14": "yuv420p14le",
         "YUV420P16": "yuv420p16le",
         "YUV420P9BE": "yuv420p9be",
         "YUV420P10BE": "yuv420p10be",
+        "YUV420P12BE": "yuv420p12be",
+        "YUV420P14BE": "yuv420p14be",
         "YUV420P16BE": "yuv420p16be",
 
-        "YUVA420P8" : "yuva420p",
+        "YUVA420" : "yuva420p",
         "YUVA420P9": "yuva420p9le",
         "YUVA420P10": "yuva420p10le",
         "YUVA420P16": "yuva420p16le",
@@ -132,7 +136,7 @@ def format_dict():
         "YUVA420P10BE": "yuva420p10be",
         "YUVA420P16BE": "yuva420p16be",
 
-        "YUV411P8": "yuv411p",
+        "Y41B": "yuv411p",
         "YV411": "yuv411p",
 
         "NV12": "nv12",
