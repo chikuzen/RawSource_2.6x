@@ -40,7 +40,11 @@ def format_dict():
         "YUYV": "yuyv422",
         "UYVY": "uyvy422",
         "YVYU": "yvyu422",
-
+        "AYUV": "ayuv",
+        "VUYA": "vuya",
+        "UYVA": "uyva",
+        "AYUV64": "ayuv64le",
+        "AYUV64BE": "ayuv64be",
         "Y210": "y210le",
         "Y216": "y216le",
 

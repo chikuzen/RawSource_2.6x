@@ -28,7 +28,6 @@ char* fgetsRLF(char* buf, int mc, FILE* f)
     return buf;
 }
 
-
 void split(const std::string& str, std::vector<std::string>& dst,
     const char* separator) noexcept
 {

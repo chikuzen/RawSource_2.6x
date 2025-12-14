@@ -7,7 +7,7 @@ RawSourcePlus - reads raw video data files
     for Avisynth+.
 */
 
-
+#include <type_traits>
 #include <immintrin.h>
 #include "common.h"
 
@@ -26,7 +26,7 @@ write_planar_base(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
         uint8_t* dstp = dst->GetWritePtr(plane);
         int pitch = dst->GetPitch(plane);
         size_t read_size = rowsize * height;
-        if (IS_PACKED_BGR) {
+        if constexpr (IS_PACKED_BGR) {
             fread(buff + bufoffset, 1, read_size - bufoffset, file);
             dstp += pitch * (height - 1);
             pitch = -pitch;
@@ -41,7 +41,7 @@ write_planar_base(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
             }
         }
         bufoffset = 0;
-        if (BIG_ENDIAN) {
+        if constexpr (BIG_ENDIAN) {
             for (int y = 0; y < height; ++y) {
                 for (int x = 0; x < rowsize; x += 32) {
                     __m256i* d = reinterpret_cast<__m256i*>(dstp + x);
@@ -54,7 +54,7 @@ write_planar_base(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
                 }
                 dstp += pitch;
             }
-        } else if (IS_9BITS) {
+        } else if constexpr (IS_9BITS) {
             for (int y = 0; y < height; ++y) {
                 for (int x = 0; x < rowsize; x += 32) {
                     __m256i* sd = reinterpret_cast<__m256i*>(dstp + x);
@@ -130,37 +130,31 @@ convert_be2le_all(uint8_t* buff, size_t buffsize, const uint8_t* be2le) noexcept
 
 template < typename T >
 static AVS_FORCEINLINE void
-proc_chroma(__m128i& s0, __m128i& s1, __m128i* d0, __m128i* d1);
-
-template <>
-static AVS_FORCEINLINE void
-proc_chroma<uint16_t>(__m128i& s0, __m128i& s1, __m128i* d0, __m128i* d1)
+proc_chroma(__m128i& s0, __m128i& s1, __m128i* d0, __m128i* d1)
 {
-    __m128i t0 = _mm_unpacklo_epi16(s0, s1); //u0 u4 v0 v4 u1 u5 v1 v5
-    __m128i t1 = _mm_unpackhi_epi16(s0, s1); //u2 u6 v2 v6 u3 u7 v3 v7
-    s0 = _mm_unpacklo_epi16(t0, t1); // u0 u2 u4 u6 v0 v2 v4 v6
-    s1 = _mm_unpackhi_epi16(t0, t1); // u1 u3 u5 u7 v1 v3 v5 v7
-    t0 = _mm_unpacklo_epi16(s0, s1); // u0 u1 u2 u3 u4 u5 u6 u7
-    t1 = _mm_unpackhi_epi16(s0, s1); // v0 v1 v2 v3 v4 v5 v6 v7
-    _mm_store_si128(d0, t0);
-    _mm_store_si128(d1, t1);
+    if constexpr (std::is_same_v<T, uint8_t>) {
+        __m128i t0 = _mm_unpacklo_epi8(s0, s1); //u0 u8 v0 v8 u1 u9 v1 v9 u2 ua v2 va u3 ub v3 vb
+        __m128i t1 = _mm_unpackhi_epi8(s0, s1); //u4 uc v4 vc u5 ud v5 vd u6 ue v6 ve u7 uf v7 vf
+        s0 = _mm_unpacklo_epi8(t0, t1); // u0 u4 u8 uc v0 v4 v8 vc u1 u5 u9 ud v1 v5 v9 vd
+        s1 = _mm_unpackhi_epi8(t0, t1); // u2 u6 ua ue v2 v6 va ve u3 u7 ub uf v3 v7 vb vf
+        t0 = _mm_unpacklo_epi8(s0, s1); // u0 u2 u4 u6 u8 ua uc ue v0 v2 v4 v6 v8 va vc ve
+        t1 = _mm_unpackhi_epi8(s0, s1); // u1 u3 u5 u7 u9 ub ud uf v1 v3 v5 v7 v9 vb vd vf
+        s0 = _mm_unpacklo_epi8(t0, t1); // u0 u1 u2 u3 u4 u5 u6 u7 u8 u9 ua ub uc ud ue uf
+        s1 = _mm_unpackhi_epi8(t0, t1); // v0 v1 v2 v3 v4 v5 v6 v7 v8 v9 va vb vc vd ve vf
+        _mm_store_si128(d0, s0);
+        _mm_store_si128(d1, s1);
+    } else if constexpr (std::is_same_v<T, uint16_t>) {
+        __m128i t0 = _mm_unpacklo_epi16(s0, s1); //u0 u4 v0 v4 u1 u5 v1 v5
+        __m128i t1 = _mm_unpackhi_epi16(s0, s1); //u2 u6 v2 v6 u3 u7 v3 v7
+        s0 = _mm_unpacklo_epi16(t0, t1); // u0 u2 u4 u6 v0 v2 v4 v6
+        s1 = _mm_unpackhi_epi16(t0, t1); // u1 u3 u5 u7 v1 v3 v5 v7
+        t0 = _mm_unpacklo_epi16(s0, s1); // u0 u1 u2 u3 u4 u5 u6 u7
+        t1 = _mm_unpackhi_epi16(s0, s1); // v0 v1 v2 v3 v4 v5 v6 v7
+        _mm_store_si128(d0, t0);
+        _mm_store_si128(d1, t1);
+    }
 }
 
-template <>
-static AVS_FORCEINLINE void
-proc_chroma<uint8_t>(__m128i& s0, __m128i& s1, __m128i* d0, __m128i* d1)
-{
-    __m128i t0 = _mm_unpacklo_epi8(s0, s1); //u0 u8 v0 v8 u1 u9 v1 v9 u2 ua v2 va u3 ub v3 vb
-    __m128i t1 = _mm_unpackhi_epi8(s0, s1); //u4 uc v4 vc u5 ud v5 vd u6 ue v6 ve u7 uf v7 vf
-    s0 = _mm_unpacklo_epi8(t0, t1); // u0 u4 u8 uc v0 v4 v8 vc u1 u5 u9 ud v1 v5 v9 vd
-    s1 = _mm_unpackhi_epi8(t0, t1); // u2 u6 ua ue v2 v6 va ve u3 u7 ub uf v3 v7 vb vf
-    t0 = _mm_unpacklo_epi8(s0, s1); // u0 u2 u4 u6 u8 ua uc ue v0 v2 v4 v6 v8 va vc ve
-    t1 = _mm_unpackhi_epi8(s0, s1); // u1 u3 u5 u7 u9 ub ud uf v1 v3 v5 v7 v9 vb vd vf
-    s0 = _mm_unpacklo_epi8(t0, t1); // u0 u1 u2 u3 u4 u5 u6 u7 u8 u9 ua ub uc ud ue uf
-    s1 = _mm_unpackhi_epi8(t0, t1); // v0 v1 v2 v3 v4 v5 v6 v7 v8 v9 va vb vc vd ve vf
-    _mm_store_si128(d0, s0);
-    _mm_store_si128(d1, s1);
-}
 
 template < typename T, bool BIG_ENDIAN >
 static AVS_FORCEINLINE void
@@ -182,7 +176,7 @@ write_packed_chroma(FILE* file, PVideoFrame& dst, uint8_t* buff,
         }
     } else {
         fread(buff + bufoffset, 1, read_bytes - bufoffset, file);
-        if (BIG_ENDIAN) {
+        if constexpr (BIG_ENDIAN) {
             convert_be2le_all(buff, read_bytes, be2le);
         }
         env->BitBlt(dstp, pitch, buff, rowsize, rowsize, height);
@@ -209,7 +203,7 @@ write_packed_chroma(FILE* file, PVideoFrame& dst, uint8_t* buff,
                 reinterpret_cast<const __m128i*>(srcp + 2 * x + 16));
             __m128i* d0 = reinterpret_cast<__m128i*>(dstp0 + x);
             __m128i* d1 = reinterpret_cast<__m128i*>(dstp1 + x);
-            if (BIG_ENDIAN) {
+            if constexpr (BIG_ENDIAN) {
                 s0 = _mm_shuffle_epi8(s0, be2le_idx);
                 s1 = _mm_shuffle_epi8(s1, be2le_idx);
             }
@@ -257,7 +251,7 @@ write_packed_rgb_reorder(FILE* file, PVideoFrame& dst, uint8_t* buff,
 
     fread(buff + bufoffset, 1, read_bytes - bufoffset, file);
 
-    if (BIG_ENDIAN) {
+    if constexpr (BIG_ENDIAN) {
         //At first, convert all big endian samples to little endian.
         convert_be2le_all(buff, read_bytes, be2le);
     }
@@ -324,7 +318,7 @@ write_packed_reorder_base(FILE* file, PVideoFrame& dst, uint8_t* buff,
         = _mm256_load_si256(reinterpret_cast<const __m256i*>(order));
     const uint8_t* srcp = buff;
 
-    if (IS_RGB) {
+    if constexpr (IS_RGB) {
         dstp += pitch * (height - 1);
         pitch = -pitch;
     }
@@ -406,7 +400,7 @@ write_planar_from_packed(FILE* file, PVideoFrame& dst, uint8_t* buff,
                 reinterpret_cast<const __m128i*>(srcp + 2 * x + 32));
             __m128i s3 = _mm_loadu_si128(
                 reinterpret_cast<const __m128i*>(srcp + 2 * x + 48));
-            if (BIG_ENDIAN) {
+            if constexpr (BIG_ENDIAN) {
                 s0 = _mm_shuffle_epi8(s0, be2le_idx);//Y0 U0 Y1 V0 Y2 U1 Y3 V1
                 s1 = _mm_shuffle_epi8(s1, be2le_idx);//Y4 U2 Y5 V2 Y6 U3 Y7 V3
                 s2 = _mm_shuffle_epi8(s2, be2le_idx);//Y8 U4 Y9 V4 Ya U5 Yb V5
@@ -427,7 +421,7 @@ write_planar_from_packed(FILE* file, PVideoFrame& dst, uint8_t* buff,
             t2 = _mm_unpacklo_epi16(s1, s3);//YYYYYYYY
             t3 = _mm_unpackhi_epi16(s1, s3);//VVVVVVVV
 
-            if (IS_YUYV) {
+            if constexpr (IS_YUYV) {
                 s0 = _mm_unpacklo_epi16(t0, t2);
                 s1 = _mm_unpackhi_epi16(t0, t2);
                 _mm_store_si128(reinterpret_cast<__m128i*>(dstpY + x), s0);
@@ -476,62 +470,56 @@ void write_uyvy_16be(FILE* file, PVideoFrame& dst, uint8_t* buff,
 }
 
 template < typename T > static AVS_FORCEINLINE void
-proc_ayuv(__m128i& s0, __m128i& s1, __m128i& s2, __m128i& s3, uint8_t* dA,
-    uint8_t* dY, uint8_t* dU, uint8_t* dV) noexcept;
-
-template <> static AVS_FORCEINLINE void
-proc_ayuv<uint8_t>(__m128i& s0, __m128i& s1, __m128i& s2, __m128i& s3,
-    uint8_t* d0, uint8_t* d1, uint8_t* d2, uint8_t* d3) noexcept
+proc_ayuv(__m128i& s0, __m128i& s1, __m128i& s2, __m128i& s3, uint8_t* d0,
+    uint8_t* d1, uint8_t* d2, uint8_t* d3) noexcept
 {
-    __m128i t0 = _mm_unpacklo_epi8(s0, s2);//a0 a8 y0 y8 u0 u8 v0 v8 a1 a9 y1 y9 u1 u9 v1 v9
-    __m128i t1 = _mm_unpackhi_epi8(s0, s2);//a2 aa y2 ya u2 ua v2 va a3 ab y3 yb u3 ub v3 vb
-    __m128i t2 = _mm_unpacklo_epi8(s1, s3);//a4 ac y4 yc u4 uc v4 vc a5 ad y5 yd u5 ud v5 vd
-    __m128i t3 = _mm_unpackhi_epi8(s1, s3);//a6 ae y6 ye u6 ue v6 ve a7 af y7 yf u7 uf v7 vf
+    if constexpr (std::is_same_v<T, uint8_t>) {
+        __m128i t0 = _mm_unpacklo_epi8(s0, s2);//a0 a8 y0 y8 u0 u8 v0 v8 a1 a9 y1 y9 u1 u9 v1 v9
+        __m128i t1 = _mm_unpackhi_epi8(s0, s2);//a2 aa y2 ya u2 ua v2 va a3 ab y3 yb u3 ub v3 vb
+        __m128i t2 = _mm_unpacklo_epi8(s1, s3);//a4 ac y4 yc u4 uc v4 vc a5 ad y5 yd u5 ud v5 vd
+        __m128i t3 = _mm_unpackhi_epi8(s1, s3);//a6 ae y6 ye u6 ue v6 ve a7 af y7 yf u7 uf v7 vf
 
-    s0 = _mm_unpacklo_epi8(t0, t2);//a0 a4 a8 ac y0 y4 y8 yc u0 u4 u8 uc v0 v4 v8 vc
-    s1 = _mm_unpackhi_epi8(t0, t2);//a1 a5 a9 ad y1 y5 y9 yd u1 u5 u9 ud v1 v5 v9 vd
-    s2 = _mm_unpacklo_epi8(t1, t3);//a2 a6 aa ae y2 y6 ya ye u2 u6 ua ue v2 v6 va ve
-    s3 = _mm_unpackhi_epi8(t1, t3);//a3 a7 ab af y3 y7 yb yf u3 u7 ub uf v3 v7 vb vf
+        s0 = _mm_unpacklo_epi8(t0, t2);//a0 a4 a8 ac y0 y4 y8 yc u0 u4 u8 uc v0 v4 v8 vc
+        s1 = _mm_unpackhi_epi8(t0, t2);//a1 a5 a9 ad y1 y5 y9 yd u1 u5 u9 ud v1 v5 v9 vd
+        s2 = _mm_unpacklo_epi8(t1, t3);//a2 a6 aa ae y2 y6 ya ye u2 u6 ua ue v2 v6 va ve
+        s3 = _mm_unpackhi_epi8(t1, t3);//a3 a7 ab af y3 y7 yb yf u3 u7 ub uf v3 v7 vb vf
 
-    t0 = _mm_unpacklo_epi8(s0, s2);//a0 a2 a4 a6 a8 aa ac ae y0 y2 y4 y6 y8 ya yc ye
-    t1 = _mm_unpackhi_epi8(s0, s2);//u0 u2 u4 u6 u8 ua uc ue v0 v2 v4 v6 v8 va vc ve
-    t2 = _mm_unpacklo_epi8(s1, s3);//a1 a3 a5 a7 a9 ab ad af y1 y3 y5 y7 y9 yb yd yf
-    t3 = _mm_unpackhi_epi8(s1, s3);//u1 u3 u5 u7 u9 ub ud uf v1 v3 v5 v7 v9 vb vd vf
+        t0 = _mm_unpacklo_epi8(s0, s2);//a0 a2 a4 a6 a8 aa ac ae y0 y2 y4 y6 y8 ya yc ye
+        t1 = _mm_unpackhi_epi8(s0, s2);//u0 u2 u4 u6 u8 ua uc ue v0 v2 v4 v6 v8 va vc ve
+        t2 = _mm_unpacklo_epi8(s1, s3);//a1 a3 a5 a7 a9 ab ad af y1 y3 y5 y7 y9 yb yd yf
+        t3 = _mm_unpackhi_epi8(s1, s3);//u1 u3 u5 u7 u9 ub ud uf v1 v3 v5 v7 v9 vb vd vf
 
-    s0 = _mm_unpacklo_epi8(t0, t2);//a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae af
-    s1 = _mm_unpackhi_epi8(t0, t2);//y0 y1 y2 y3 y4 y5 y6 y7 y8 y9 ya yb yc yd ye yf
-    s2 = _mm_unpacklo_epi8(t1, t3);//u0 u1 u2 u3 u4 u5 u6 u7 u8 u9 ua ub uc ud ue uf
-    s3 = _mm_unpackhi_epi8(t1, t3);//v0 v1 v2 v3 v4 v5 v6 v7 v8 v9 va vb vc vd ve vf
+        s0 = _mm_unpacklo_epi8(t0, t2);//a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae af
+        s1 = _mm_unpackhi_epi8(t0, t2);//y0 y1 y2 y3 y4 y5 y6 y7 y8 y9 ya yb yc yd ye yf
+        s2 = _mm_unpacklo_epi8(t1, t3);//u0 u1 u2 u3 u4 u5 u6 u7 u8 u9 ua ub uc ud ue uf
+        s3 = _mm_unpackhi_epi8(t1, t3);//v0 v1 v2 v3 v4 v5 v6 v7 v8 v9 va vb vc vd ve vf
 
-    _mm_store_si128(reinterpret_cast<__m128i*>(d0), s0);
-    _mm_store_si128(reinterpret_cast<__m128i*>(d1), s1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(d2), s2);
-    _mm_store_si128(reinterpret_cast<__m128i*>(d3), s3);
-}
+        _mm_store_si128(reinterpret_cast<__m128i*>(d0), s0);
+        _mm_store_si128(reinterpret_cast<__m128i*>(d1), s1);
+        _mm_store_si128(reinterpret_cast<__m128i*>(d2), s2);
+        _mm_store_si128(reinterpret_cast<__m128i*>(d3), s3);
 
-template <> static AVS_FORCEINLINE void
-proc_ayuv<uint16_t>(__m128i& s0, __m128i& s1, __m128i& s2, __m128i& s3,
-    uint8_t* d0, uint8_t* d1, uint8_t* d2, uint8_t* d3) noexcept
-{
-    __m128i t0 = _mm_unpacklo_epi16(s0, s2);//A0 A4 Y0 Y3 U0 U4 V0 V4
-    __m128i t1 = _mm_unpackhi_epi16(s0, s2);//A1 A5 Y1 Y5 U1 U5 V1 V5
-    __m128i t2 = _mm_unpacklo_epi16(s1, s3);//A2 A6 Y2 Y6 U2 U6 V2 V6
-    __m128i t3 = _mm_unpackhi_epi16(s1, s3);//A3 A7 Y3 Y7 U3 U7 V3 V7
+    } else if constexpr (std::is_same_v<T, uint16_t>) {
+        __m128i t0 = _mm_unpacklo_epi16(s0, s2);//A0 A4 Y0 Y3 U0 U4 V0 V4
+        __m128i t1 = _mm_unpackhi_epi16(s0, s2);//A1 A5 Y1 Y5 U1 U5 V1 V5
+        __m128i t2 = _mm_unpacklo_epi16(s1, s3);//A2 A6 Y2 Y6 U2 U6 V2 V6
+        __m128i t3 = _mm_unpackhi_epi16(s1, s3);//A3 A7 Y3 Y7 U3 U7 V3 V7
 
-    s0 = _mm_unpacklo_epi16(t0, t2);//A0 A2 A4 A6 Y0 Y2 Y4 Y6
-    s1 = _mm_unpacklo_epi16(t0, t2);//U0 U2 U4 U6 V0 V2 V4 V6
-    s2 = _mm_unpacklo_epi16(t1, t3);//A1 A3 A5 A7 Y1 Y3 Y5 Y7
-    s3 = _mm_unpacklo_epi16(t1, t3);//U1 U3 U5 U7 V1 V3 V5 V7
+        s0 = _mm_unpacklo_epi16(t0, t2);//A0 A2 A4 A6 Y0 Y2 Y4 Y6
+        s1 = _mm_unpackhi_epi16(t0, t2);//U0 U2 U4 U6 V0 V2 V4 V6
+        s2 = _mm_unpacklo_epi16(t1, t3);//A1 A3 A5 A7 Y1 Y3 Y5 Y7
+        s3 = _mm_unpackhi_epi16(t1, t3);//U1 U3 U5 U7 V1 V3 V5 V7
 
-    t0 = _mm_unpacklo_epi16(s0, s2);//A0 A1 A2 A3 A4 A5 A6 A7
-    t1 = _mm_unpacklo_epi16(s0, s2);//Y0 Y1 Y2 Y3 Y4 Y5 Y6 Y7
-    t2 = _mm_unpacklo_epi16(s1, s3);//U0 U1 U2 U3 U4 U5 U6 U7
-    t3 = _mm_unpacklo_epi16(s1, s3);//V0 V1 V2 V3 V4 V5 V6 V7
+        t0 = _mm_unpacklo_epi16(s0, s2);//A0 A1 A2 A3 A4 A5 A6 A7
+        t1 = _mm_unpackhi_epi16(s0, s2);//Y0 Y1 Y2 Y3 Y4 Y5 Y6 Y7
+        t2 = _mm_unpacklo_epi16(s1, s3);//U0 U1 U2 U3 U4 U5 U6 U7
+        t3 = _mm_unpackhi_epi16(s1, s3);//V0 V1 V2 V3 V4 V5 V6 V7
 
-    _mm_store_si128(reinterpret_cast<__m128i*>(d0), t0);
-    _mm_store_si128(reinterpret_cast<__m128i*>(d1), t1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(d2), t2);
-    _mm_store_si128(reinterpret_cast<__m128i*>(d3), t3);
+        _mm_store_si128(reinterpret_cast<__m128i*>(d0), t0);
+        _mm_store_si128(reinterpret_cast<__m128i*>(d1), t1);
+        _mm_store_si128(reinterpret_cast<__m128i*>(d2), t2);
+        _mm_store_si128(reinterpret_cast<__m128i*>(d3), t3);
+    }
 }
 
 
@@ -567,7 +555,7 @@ write_ayuv_base(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
                 reinterpret_cast<__m128i*>(buff + 4 * x + 32));
             __m128i s3 = _mm_loadu_si128(
                 reinterpret_cast<__m128i*>(buff + 4 * x + 48));
-            if (BIG_ENDIAN) {
+            if constexpr (BIG_ENDIAN) {
                 s0 = _mm_shuffle_epi8(s0, be2le_idx);
                 s1 = _mm_shuffle_epi8(s1, be2le_idx);
                 s2 = _mm_shuffle_epi8(s2, be2le_idx);
@@ -604,6 +592,8 @@ void write_ayuv_16be(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
     write_ayuv_base<uint16_t, true>(file, dst, buff, order, count, env, be2le,
         bufoffset);
 }
+
+
 void write_black_frame(PVideoFrame& dst, const VideoInfo& vi) noexcept
 {
     uint8_t* dstp = dst->GetWritePtr();
