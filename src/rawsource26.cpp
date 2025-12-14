@@ -469,7 +469,7 @@ RawSource::RawSource(const std::string& source, const int width, const int heigh
     const std::string& a_index, const bool s, const int sarnum, const int sarden,
     const int frames, ise_t* env)
     : show(s), rawbuf(nullptr), index(nullptr), shuffleIndex(nullptr),
-    be2le(nullptr)
+    be2le(nullptr), props(props_t())
 {
     openFile(source);
 
@@ -596,8 +596,10 @@ PVideoFrame __stdcall RawSource::GetFrame(int n, ise_t* env)
     if (props.colRange > -1) {
         env->propSetInt(map, "_ColorRange", props.colRange, 0);
     }
-    if (vi.IsYUV()) {
+    if (props.chromaLoc > -1) {
         env->propSetInt(map, "_ChromaLocation", props.chromaLoc, 0);
+    }
+    if (vi.IsYUV()) {
         env->propSetInt(map, "_Primaries", props.colPrim, 0);
         env->propSetInt(map, "_Transfer", props.transfer, 0);
         env->propSetInt(map, "_Matrix", props.colMat, 0);

@@ -54,7 +54,7 @@ struct props_t {
     int colPrim;
     int transfer;
     int colMat;
-    props_t() : sarNum(0), sarDen(0), colRange(-1), chromaLoc(0), colPrim(2),
+    props_t() : sarNum(0), sarDen(0), colRange(-1), chromaLoc(-1), colPrim(2),
         transfer(2), colMat(2) { }
 };
 
