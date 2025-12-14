@@ -19,7 +19,7 @@ RawSourcePlus(string "file", int "width", int "height", string "pixel_type", int
 RawSourcePlus opens a video file which contains 8bit, 9bit, 10bit, 16bit or float YUV444, YUV422, YUV411, YUV420, Gray, or RGB video data.
 There are four ways how the positions of the video frame data are calculated:
 
-	1. width, height and the others is given as arguments. Then the positions are calculated assuming that only video data is in the file. These values ​​will be overwritten if a valid header or filename are present.
+	1. width, height and the others is given as arguments. Then the positions are calculated assuming that only video data is in the file. These values will be overwritten if a valid header or filename are present.
 		int "width": specify image width. default value is 720.
 		int "height": specify image height. default value is 576.
 		string "pixel_type": specify image format. see below "Supported pixel types" section for details.
@@ -105,6 +105,7 @@ These are supported packed formats.
 |AYUV, VUYA, VUYX, UYVA|YUVA444P8|interleaved 8-bit Y, U, V and A (or 0 padding) without subsampling.|
 |AYUV64, AYUV64BE|YUVA444P16|interleaved 16-bit Y, U, V and A without subsampling.|
 |Y210, Y216, Y210BE, Y216BE|YUV422P16|interleaved 16-bit Y, U and V horizontally subsampled like YUY2. Y210 and Y210BE has only 10-bit precision, but the data is left-shifted by 6-bit to make it to 16-bit.|
+|V210|YUV422P10|interleaved 10-bit Y, U and V horizontally subsampled like UYVY.|
 |UYVY10, UYVY10BE|YUV422P10|interleaved 10-bit Y, U andV horizontally subsampled.|
 |UYVY12, UYVY12BE|YUV422P12|interleaved 12-bit Y, U andV horizontally subsampled.|
 |UYVY14, UYVY14BE|YUV422P14|interleaved 14-bit Y, U andV horizontally subsampled.|

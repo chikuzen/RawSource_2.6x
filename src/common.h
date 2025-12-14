@@ -161,6 +161,9 @@ void write_ayuv_16(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
 void write_ayuv_16be(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
     int count, ise_t* env, const uint8_t* be2le, size_t bufoffset) noexcept;
 
+void write_v210(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
+    int count, ise_t* env, const uint8_t* be2le, size_t bufoffset) noexcept;
+
 void write_black_frame(PVideoFrame& dst, const VideoInfo& vi) noexcept;
 
 template <typename T>

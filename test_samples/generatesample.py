@@ -188,6 +188,8 @@ def format_dict():
         "GREY12BE": "gray12be",
         "GREY14BE": "gray14be",
         "GREY16BE": "gray16be",
+
+        "V210": "",
     }
 
 
@@ -241,12 +243,16 @@ if __name__ == "__main__":
         lines = []
         lines.append(f'#LoadPlugin("{release}")\n')
         lines.append(f'LoadPlugin("{debug}")\n\n\n')
-        
+
 
         for ptype, pfmt in fmtdict.items():
             out = f"rawfiles/sample_pt={ptype}_w={w}_h={h}_fn={fn}_fd={fd}.{ext}"
             cmdline = f"ffmpeg -hide_banner -y -i {src} -pix_fmt {pfmt} " \
                 + f"-f {ffmt} {out}"
+
+            if ptype == "V210":
+                cmdline = f"ffmpeg -hide_banner -y -i {src} -pix_fmt "\
+                    + f"yuv422p10le -c:v v210 -an -f rawvideo {out}"
 
             print("\n-----------------------------------------------------")
             print(cmdline)

@@ -172,10 +172,8 @@
     <ClCompile Include="..\src\utils.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\src\rawsource26.html" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="..\src\common.h" />
+    <ClInclude Include="..\src\v210.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

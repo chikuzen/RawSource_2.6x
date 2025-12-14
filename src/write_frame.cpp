@@ -10,6 +10,8 @@ RawSourcePlus - reads raw video data files
 #include <type_traits>
 #include <immintrin.h>
 #include "common.h"
+#include "v210.h"
+
 
 template < bool IS_9BITS, bool BIG_ENDIAN, bool IS_PACKED_BGR >
 static AVS_FORCEINLINE void
@@ -591,6 +593,39 @@ void write_ayuv_16be(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
 {
     write_ayuv_base<uint16_t, true>(file, dst, buff, order, count, env, be2le,
         bufoffset);
+}
+
+
+void write_v210(FILE* file, PVideoFrame& dst, uint8_t* buff, int* order,
+    int count, ise_t* env, const uint8_t* be2le, size_t bufoffset) noexcept
+{
+    int width = dst->GetRowSize(PLANAR_Y) / 2;
+    int height = dst->GetHeight(PLANAR_Y);
+    int pitchY = dst->GetPitch(PLANAR_Y) / 2;
+    int pitchUV = dst->GetPitch(PLANAR_U) / 2;
+    uint16_t* dstpY = reinterpret_cast<uint16_t*>(dst->GetWritePtr(PLANAR_Y));
+    uint16_t* dstpU = reinterpret_cast<uint16_t*>(dst->GetWritePtr(PLANAR_U));
+    uint16_t* dstpV = reinterpret_cast<uint16_t*>(dst->GetWritePtr(PLANAR_V));
+
+    const V210_t* srcp = reinterpret_cast<V210_t*>(buff);
+    size_t spitch = V210_t::getStrideBytes(width);
+
+    fread(buff + bufoffset, 1, spitch * height - bufoffset, file);
+
+    spitch /= sizeof(V210_t);
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; x += 6) {
+            auto v210 = srcp[x / 6];
+            v210.setY(dstpY + x);
+            v210.setU(dstpU + x / 2);
+            v210.setV(dstpV + x / 2);
+        }
+        srcp += spitch;
+        dstpY += pitchY;
+        dstpU += pitchUV;
+        dstpV += pitchUV;
+    }
 }
 
 

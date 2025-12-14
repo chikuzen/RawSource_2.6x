@@ -22,6 +22,7 @@
     #include <avisynth/avs/alignment.h>
 #endif
 #include "common.h"
+#include "V210.h"
 
 
 
@@ -165,6 +166,9 @@ void RawSource::setProcess(std::string& pix_type)
     t["UYVA"]     = mt(VI::CS_YUVA444,    U, Y, V, A, 4, write_ayuv);
     t["AYUV64"]   = mt(VI::CS_YUVA444P16, A, Y, U, V, 4, write_ayuv_16);
     t["AYUV64BE"] = mt(VI::CS_YUVA444P16, A, Y, U, V, 4, write_ayuv_16be);
+
+    // A crappy format. Anyone who wants to use this these days is crazy.
+    t["V210"] = mt(VI::CS_YUV422P10, U, Y, V, Y, 3, write_v210);
 
     // Although, Y210 do not have 16-bit sample precision,
     // the data itself has been left-shifted to make it 16-bit.
@@ -528,6 +532,9 @@ RawSource::RawSource(const std::string& source, const int width, const int heigh
     }
 
     int64_t framesize = vi.width * vi.height * vi.BitsPerPixel() / 8;
+    if (pix_type == "V210") {
+        framesize = V210_t::getStrideBytes(vi.width) * vi.height;
+    }
     rawbuf = reinterpret_cast<uint8_t*>(avs_malloc(framesize, 64));
     validate(!rawbuf, "failed to allocate read buffer.");
 
