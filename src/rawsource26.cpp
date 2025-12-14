@@ -27,7 +27,6 @@
 
 
 class RawSource : public IClip {
-
     VideoInfo vi;
     FILE* file;
     int64_t fileSize;
@@ -42,11 +41,11 @@ class RawSource : public IClip {
     uint8_t* shuffleIndex;
     uint8_t* be2le;
 
-    void openFile(const std::string& fname);
+    void openFile(const std::string& fname, std::filesystem::path& fpath);
     void setProcess(std::string& pix_type);
     void generateShuffleIndex(bool is_16bit);
     void generateBE2LEIndex();
-    void parseFileName(const std::string& fname, std::string& pix_type);
+    void parseFileName(std::filesystem::path& fpath, std::string& pix_type);
 
     write_frame_t writeDestFrame;
 
@@ -74,10 +73,8 @@ public:
 };
 
 
-void RawSource::openFile(const std::string& fname)
+void RawSource::openFile(const std::string& fname, std::filesystem::path& fpath)
 {
-    namespace fs = std::filesystem;
-
     if (fname == "-") {
 #if defined(_WIN32)
         validate(_setmode(_fileno(stdin), _O_BINARY) == -1,
@@ -88,17 +85,16 @@ void RawSource::openFile(const std::string& fname)
         return;
     }
 
-    fs::path fpath;
     std::error_code ec;
-
 #if defined(_WIN32)
     wchar_t tmp[MAX_PATH * 4] = { 0 };
     MultiByteToWideChar(CP_UTF8, 0, fname.c_str(), -1, tmp, MAX_PATH * 4);
     fpath = tmp;
-    if (!fs::exists(fpath, ec)) {
+    if (!std::filesystem::exists(fpath, ec)) {
         MultiByteToWideChar(CP_ACP, 0, fname.c_str(), -1, tmp, MAX_PATH * 4);
         fpath = tmp;
-        validate(!fs::exists(fpath, ec), std::format("{} is not exists.", fname));
+        validate(!std::filesystem::exists(fpath, ec),
+            std::format("{} is not exists.", fname));
     }
     file = _wfopen(tmp, L"rb");
 #else
@@ -107,7 +103,7 @@ void RawSource::openFile(const std::string& fname)
     file = fopen(tmp, "rb");
 #endif
     validate(!file, std::format("failed to open {}.", fname));
-    fileSize = static_cast<int64_t>(fs::file_size(fpath));
+    fileSize = static_cast<int64_t>(std::filesystem::file_size(fpath));
 }
 
 void RawSource::setProcess(std::string& pix_type)
@@ -417,12 +413,20 @@ void RawSource::generateBE2LEIndex()
 }
 
 
-void RawSource::parseFileName(const std::string& fname, std::string& pix_type)
+void
+RawSource::parseFileName(std::filesystem::path& fpath, std::string& pix_type)
 {
-    std::filesystem::path p(fname);
-    auto stem = p.stem();
+    auto stem = fpath.stem();
     std::vector<std::string> v;
-    split(stem.string(), v, "_");
+#if defined(_WIN32)
+    std::wstring wstem(stem.wstring());
+    std::string fname(MAX_PATH * 4, 0);
+    WideCharToMultiByte(CP_UTF8, 0, wstem.c_str(), -1, &fname[0], MAX_PATH * 4,
+        nullptr, nullptr);
+#else
+    std::string fname(stem.string());
+#endif
+    split(fname, v, "_");
     for (const auto& n : v) {
         if (n.find("w=") == 0) {
             int w  = std::stoi(n.substr(2));
@@ -471,7 +475,8 @@ RawSource::RawSource(const std::string& source, const int width, const int heigh
     : show(s), rawbuf(nullptr), index(nullptr), shuffleIndex(nullptr),
     be2le(nullptr), props(props_t())
 {
-    openFile(source);
+    std::filesystem::path fpath;
+    openFile(source, fpath);
 
     std::memset(&vi, 0, sizeof(VideoInfo));
     vi.width = width;
@@ -484,8 +489,8 @@ RawSource::RawSource(const std::string& source, const int width, const int heigh
     frameOffset = 0;
     std::string pix_type(ptype);
 
-    if (pix_type == "") {
-        parseFileName(source, pix_type);
+    if (pix_type == "" && source != "-") {
+        parseFileName(fpath, pix_type);
     }
 
     if (a_index.length() == 0 && pix_type == "") { //use header if valid else width, height, pixel_type from AVS are used
