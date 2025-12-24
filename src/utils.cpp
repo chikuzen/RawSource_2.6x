@@ -176,13 +176,13 @@ void parse_y4m(std::string& header, VideoInfo& vi, std::string& pix_type,
                 } else if (range == "LIMITED") {
                     props.colRange = 1;
                 }
-            } else if (p.find("COLORPRIMARIES=")) {
+            } else if (p.find("COLORPRIMARIES=") == 1) {
                 int cprim = std::stoi(p.substr(16));
                 props.colPrim = cprim;
-            } else if (p.find("COLORMATRIX=")) {
+            } else if (p.find("COLORMATRIX=") == 1) {
                 int cmat = std::stoi(p.substr(13));
                 props.colMat = cmat;
-            } else if (p.find("TRANSFER=")) {
+            } else if (p.find("TRANSFER=") == 1) {
                 int tr = std::stoi(p.substr(10));
                 props.transfer = tr;
             }

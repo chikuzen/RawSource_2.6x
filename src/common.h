@@ -62,7 +62,7 @@ struct props_t {
 using ise_t = IScriptEnvironment;
 
 using write_frame_t = void (*)(FILE*, PVideoFrame&, uint8_t*, int*, int,
-    ise_t*, const uint8_t* be2le, size_t bufoffset) noexcept;
+    ise_t*, const uint8_t* be2le, size_t bufoffset);
 
 constexpr unsigned MIN_WIDTH = 16;
 constexpr unsigned MIN_HEIGHT = 16;
